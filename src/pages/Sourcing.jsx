@@ -28,12 +28,17 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
   const { theme } = useTheme();
 
-  // Build sorted list of all available quarters from real data
+  // Build full quarter range from Q1 2021 to Q1 2026
   const allQuarters = useMemo(() => {
-    const set = new Set();
-    attioDeals.forEach(d => { if (d.date) set.add(d.date); });
-    return [...set].sort((a, b) => quarterToNum(a) - quarterToNum(b));
-  }, [attioDeals]);
+    const quarters = [];
+    for (let year = 2021; year <= 2026; year++) {
+      const maxQ = year === 2026 ? 1 : 4;
+      for (let q = 1; q <= maxQ; q++) {
+        quarters.push(`Q${q} ${year}`);
+      }
+    }
+    return quarters;
+  }, []);
 
   const [filters, setFilters] = useState({
     country: 'all',
@@ -44,8 +49,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  // Default from/to: full historical range
-  const effectiveFrom = filters.from || allQuarters[0] || 'Q1 2021';
+  // Default from/to: Q1 2021 → Q1 2026
+  const effectiveFrom = filters.from || 'Q1 2021';
   const effectiveTo = filters.to || 'Q1 2026';
 
   // Merge local state with Attio data
@@ -255,22 +260,18 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
               { value: 'Venture', label: 'Venture' },
             ]}
           />
-          {allQuarters.length > 0 && (
-            <>
-              <FilterSelect
-                label="From"
-                value={effectiveFrom}
-                onChange={(v) => setFilters({ ...filters, from: v })}
-                options={allQuarters.map(q => ({ value: q, label: q }))}
-              />
-              <FilterSelect
-                label="To"
-                value={effectiveTo}
-                onChange={(v) => setFilters({ ...filters, to: v })}
-                options={allQuarters.map(q => ({ value: q, label: q }))}
-              />
-            </>
-          )}
+          <FilterSelect
+            label="From"
+            value={effectiveFrom}
+            onChange={(v) => setFilters({ ...filters, from: v })}
+            options={allQuarters.map(q => ({ value: q, label: q }))}
+          />
+          <FilterSelect
+            label="To"
+            value={effectiveTo}
+            onChange={(v) => setFilters({ ...filters, to: v })}
+            options={allQuarters.map(q => ({ value: q, label: q }))}
+          />
           <FilterSelect
             label="Show"
             value={filters.show}
