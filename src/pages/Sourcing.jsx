@@ -121,7 +121,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     showToast(`Updated ${field === 'inScope' ? 'scope' : 'seen'} status`);
   };
 
-  // Compute per-quarter stats from real deal data
+  // Compute per-quarter stats from real deal data across the full selected range
   const quarterlyData = useMemo(() => {
     // Group deals by quarter
     const byQ = {};
@@ -133,21 +133,18 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       if (d.inScope && d.seen) byQ[d.date].seen++;
     });
 
-    // Sort quarters chronologically
-    const sorted = Object.keys(byQ).sort((a, b) => quarterToNum(a) - quarterToNum(b));
-
-    // Filter to selected range
+    // Use ALL quarters in range, not just those with data
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    const filtered = sorted.filter(q => {
+    const filtered = allQuarters.filter(q => {
       const n = quarterToNum(q);
       return n >= fromNum && n <= toNum;
     });
 
     const labels = filtered;
-    const inScopeCounts = filtered.map(q => byQ[q].inScope);
+    const inScopeCounts = filtered.map(q => (byQ[q]?.inScope || 0));
     const coverageRates = filtered.map(q =>
-      byQ[q].inScope > 0 ? Math.round((byQ[q].seen / byQ[q].inScope) * 100) : 0
+      byQ[q]?.inScope > 0 ? Math.round((byQ[q].seen / byQ[q].inScope) * 100) : 0
     );
 
     // Trailing 4-quarter average on coverage
@@ -158,7 +155,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     });
 
     return { labels, inScopeCounts, coverageRates, trailing };
-  }, [deals, effectiveFrom, effectiveTo]);
+  }, [deals, effectiveFrom, effectiveTo, allQuarters]);
 
   const chartOptions = {
     responsive: true,
