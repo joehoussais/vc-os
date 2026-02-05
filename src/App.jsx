@@ -12,7 +12,7 @@ import DealAnalysis from './pages/DealAnalysis';
 import Portfolio from './pages/Portfolio';
 
 function App() {
-  const { user, loading, login, logout } = useAuth();
+  const { user, loading, login, logout, error } = useAuth();
   const [activeTab, setActiveTab] = useState('sourcing');
   const [toast, setToast] = useState({ show: false, message: '' });
 
@@ -44,7 +44,7 @@ function App() {
 
   // Show login screen if not authenticated
   if (!user) {
-    return <LoginScreen onLogin={login} />;
+    return <LoginScreen onLogin={login} error={error} />;
   }
 
   const renderTab = () => {

@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 import netlifyIdentity from 'netlify-identity-widget';
 
+const ALLOWED_DOMAIN = 'redriverwest.com';
+
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const isAllowedEmail = (email) => {
+    return email && email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
+  };
 
   useEffect(() => {
     // Initialize Netlify Identity
@@ -11,13 +18,27 @@ export function useAuth() {
 
     // Check if user is already logged in
     const currentUser = netlifyIdentity.currentUser();
-    setUser(currentUser);
+    if (currentUser && !isAllowedEmail(currentUser.email)) {
+      // User is logged in but not allowed - log them out
+      netlifyIdentity.logout();
+      setError(`Access restricted to @${ALLOWED_DOMAIN} accounts`);
+    } else {
+      setUser(currentUser);
+    }
     setLoading(false);
 
     // Listen for login
     netlifyIdentity.on('login', (user) => {
-      setUser(user);
-      netlifyIdentity.close();
+      if (!isAllowedEmail(user.email)) {
+        // Not an allowed domain - log them out immediately
+        netlifyIdentity.logout();
+        setError(`Access restricted to @${ALLOWED_DOMAIN} accounts`);
+        setUser(null);
+      } else {
+        setError(null);
+        setUser(user);
+        netlifyIdentity.close();
+      }
     });
 
     // Listen for logout
@@ -31,13 +52,16 @@ export function useAuth() {
     };
   }, []);
 
-  const login = () => netlifyIdentity.open('login');
+  const login = () => {
+    setError(null);
+    netlifyIdentity.open('login');
+  };
   const logout = () => netlifyIdentity.logout();
 
-  return { user, loading, login, logout };
+  return { user, loading, login, logout, error };
 }
 
-export function LoginScreen({ onLogin }) {
+export function LoginScreen({ onLogin, error }) {
   return (
     <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center">
       <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
@@ -49,6 +73,12 @@ export function LoginScreen({ onLogin }) {
         </div>
         <h1 className="text-2xl font-bold text-center text-gray-900 mb-2">VC Operating System</h1>
         <p className="text-center text-gray-500 mb-8">Red River West</p>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm text-center">
+            {error}
+          </div>
+        )}
 
         <button
           onClick={onLogin}
@@ -64,7 +94,7 @@ export function LoginScreen({ onLogin }) {
         </button>
 
         <p className="text-xs text-center text-gray-400 mt-6">
-          Access restricted to Red River West team members
+          Access restricted to @redriverwest.com accounts
         </p>
       </div>
     </div>
