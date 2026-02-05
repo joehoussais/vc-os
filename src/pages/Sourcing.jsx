@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line, Pie } from 'react-chartjs-2';
-import { dealsData, coverageTimeSeriesData, chartColors } from '../data/mockData';
+import { attioDeals, coverageTimeSeriesData, chartColors, calculateCoverageStats, calculateCoverageByCountry } from '../data/attioData';
 import Modal from '../components/Modal';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
@@ -16,28 +16,68 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  const filteredDeals = dealsData.map(d => ({
-    ...d,
-    inScope: dealState[d.id]?.inScope ?? d.inScope,
-    seen: dealState[d.id]?.seen ?? d.seen
-  })).filter(d => {
-    if (filters.country !== 'all' && d.country !== filters.country) return false;
-    if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
-    if (filters.show === 'in-scope' && !d.inScope) return false;
-    if (filters.show === 'unseen' && (!d.inScope || d.seen)) return false;
-    return true;
-  }).sort((a, b) => {
-    const [aq, ay] = [parseInt(a.date.slice(1,2)), parseInt(a.date.slice(-4))];
-    const [bq, by] = [parseInt(b.date.slice(1,2)), parseInt(b.date.slice(-4))];
-    return (by * 4 + bq) - (ay * 4 + aq);
-  });
+  // Merge local state with Attio data
+  const deals = useMemo(() => {
+    return attioDeals.map(d => ({
+      ...d,
+      inScope: dealState[d.id]?.inScope ?? d.inScope,
+      seen: dealState[d.id]?.seen ?? d.seen
+    }));
+  }, [dealState]);
 
-  const inScopeCount = filteredDeals.filter(d => d.inScope).length;
-  const seenCount = filteredDeals.filter(d => d.inScope && d.seen).length;
-  const coverage = inScopeCount > 0 ? Math.round((seenCount / inScopeCount) * 100) : 0;
+  // Apply filters
+  const filteredDeals = useMemo(() => {
+    return deals.filter(d => {
+      if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
+      if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
+      if (filters.show === 'in-scope' && !d.inScope) return false;
+      if (filters.show === 'unseen' && (!d.inScope || d.seen)) return false;
+      return true;
+    }).sort((a, b) => {
+      // Sort by announced date descending
+      return new Date(b.announcedDate) - new Date(a.announcedDate);
+    });
+  }, [deals, filters]);
+
+  // Calculate coverage stats
+  const stats = useMemo(() => {
+    const filtered = deals.filter(d => {
+      if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
+      if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
+      return true;
+    });
+    const inScopeCount = filtered.filter(d => d.inScope).length;
+    const seenCount = filtered.filter(d => d.inScope && d.seen).length;
+    const coverage = inScopeCount > 0 ? Math.round((seenCount / inScopeCount) * 100) : 0;
+    return { total: filtered.length, inScope: inScopeCount, seen: seenCount, coverage };
+  }, [deals, filters]);
+
+  // Calculate coverage by country for pie chart
+  const coverageByCountry = useMemo(() => calculateCoverageByCountry(deals), [deals]);
+
+  // Calculate pie chart data
+  const pieData = useMemo(() => {
+    const countryData = Object.entries(coverageByCountry)
+      .filter(([_, v]) => v.total > 0)
+      .map(([k, v]) => ({ label: k, value: v.total }));
+
+    const stageData = {};
+    deals.forEach(d => {
+      stageData[d.stage] = (stageData[d.stage] || 0) + 1;
+    });
+
+    const sourceData = {};
+    deals.filter(d => d.seen).forEach(d => {
+      const source = d.source || 'Unknown';
+      sourceData[source] = (sourceData[source] || 0) + 1;
+    });
+
+    return { countryData, stageData, sourceData };
+  }, [deals, coverageByCountry]);
 
   const toggleDealState = (dealId, field) => {
-    const current = dealState[dealId] || { ...dealsData.find(d => d.id === dealId) };
+    const deal = deals.find(d => d.id === dealId);
+    const current = dealState[dealId] || { inScope: deal.inScope, seen: deal.seen };
     const newState = { ...current, [field]: !current[field] };
     setDealState({ ...dealState, [dealId]: newState });
     showToast(`Updated ${field === 'inScope' ? 'scope' : 'seen'} status`);
@@ -91,11 +131,11 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             options={[
               { value: 'all', label: 'All Countries' },
               { value: 'France', label: 'France' },
-              { value: 'Germany', label: 'Germany' },
+              { value: 'Germany', label: 'Germany & Benelux' },
               { value: 'Nordics', label: 'Nordics' },
               { value: 'Southern Europe', label: 'Southern Europe' },
               { value: 'Eastern Europe', label: 'Eastern Europe' },
-              { value: 'Other', label: 'Other' },
+              { value: 'Other', label: 'Other (UK, etc.)' },
             ]}
           />
           <FilterSelect
@@ -104,32 +144,12 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             onChange={(v) => setFilters({ ...filters, stage: v })}
             options={[
               { value: 'all', label: 'All Stages' },
+              { value: 'Pre-Seed', label: 'Pre-Seed' },
               { value: 'Seed', label: 'Seed' },
               { value: 'Series A', label: 'Series A' },
               { value: 'Series B', label: 'Series B' },
               { value: 'Series C', label: 'Series C' },
-            ]}
-          />
-          <FilterSelect
-            label="From"
-            value={filters.from}
-            onChange={(v) => setFilters({ ...filters, from: v })}
-            options={[
-              { value: 'Q1 2021', label: 'Q1 2021' },
-              { value: 'Q1 2022', label: 'Q1 2022' },
-              { value: 'Q1 2023', label: 'Q1 2023' },
-              { value: 'Q1 2024', label: 'Q1 2024' },
-              { value: 'Q1 2025', label: 'Q1 2025' },
-            ]}
-          />
-          <FilterSelect
-            label="To"
-            value={filters.to}
-            onChange={(v) => setFilters({ ...filters, to: v })}
-            options={[
-              { value: 'Q4 2025', label: 'Q4 2025' },
-              { value: 'Q3 2025', label: 'Q3 2025' },
-              { value: 'Q2 2025', label: 'Q2 2025' },
+              { value: 'Venture', label: 'Venture' },
             ]}
           />
           <FilterSelect
@@ -142,6 +162,14 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
               { value: 'unseen', label: 'Unseen Only' },
             ]}
           />
+          <div className="ml-auto flex items-center gap-4 text-[13px]">
+            <span className="text-[var(--text-tertiary)]">
+              {stats.total} deals · {stats.inScope} in scope
+            </span>
+            <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">
+              {stats.coverage}% coverage
+            </span>
+          </div>
         </div>
       </div>
 
@@ -152,11 +180,11 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3>
-              <p className="text-xs text-[var(--text-tertiary)]">2020 - Q3 2025</p>
+              <p className="text-xs text-[var(--text-tertiary)]">Historical coverage over time</p>
             </div>
             <div className="text-right">
-              <span className="text-3xl font-bold text-[var(--rrw-red)]">86%</span>
-              <span className="text-xs text-[var(--text-tertiary)] block">Q3 2025</span>
+              <span className="text-3xl font-bold text-[var(--rrw-red)]">{stats.coverage}%</span>
+              <span className="text-xs text-[var(--text-tertiary)] block">Current</span>
             </div>
           </div>
           <div className="h-72">
@@ -182,24 +210,41 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-semibold text-[var(--text-primary)]">Recent Deals</h3>
-              <p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals · {inScopeCount} in scope · {coverage}% coverage</p>
+              <h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3>
+              <p className="text-xs text-[var(--text-tertiary)]">
+                {filteredDeals.length} deals shown · Mark as seen to update coverage
+              </p>
             </div>
-            <button className="h-8 px-3 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] rounded-md transition-all">
-              Export
-            </button>
+            <span className="px-2 py-1 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500">
+              Attio Connected
+            </span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
-            {filteredDeals.map(deal => (
-              <DealRow
-                key={deal.id}
-                deal={deal}
-                dealState={dealState}
-                onToggle={toggleDealState}
-                onClick={() => setSelectedDeal(deal)}
-              />
-            ))}
+            {filteredDeals.length === 0 ? (
+              <div className="p-8 text-center text-[var(--text-tertiary)]">
+                No deals match your filters
+              </div>
+            ) : (
+              filteredDeals.map(deal => (
+                <DealRow
+                  key={deal.id}
+                  deal={deal}
+                  onToggle={toggleDealState}
+                  onClick={() => setSelectedDeal(deal)}
+                />
+              ))
+            )}
           </div>
+        </div>
+      </div>
+
+      {/* Coverage by Country */}
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
+        <h3 className="font-semibold text-[var(--text-primary)] mb-4">Coverage by Region</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {Object.entries(coverageByCountry).map(([region, data]) => (
+            <CoverageCard key={region} region={region} data={data} />
+          ))}
         </div>
       </div>
 
@@ -210,10 +255,35 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
 
       {/* Pie Charts */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <PieCard title="Dealflow by country" labels={['France', 'Germany', 'Nordics', 'S. Europe', 'E. Europe', 'Other']} data={[50, 14, 8, 6, 8, 14]} options={pieOptions} />
-        <PieCard title="Dealflow by stage" labels={['Series A', 'Seed', 'Series B', 'Series C']} data={[58, 25, 12, 5]} options={pieOptions} />
-        <PieCard title="Dealflow by source" labels={['Proactive', 'Intermediate', 'VC Network', 'Inbound', 'Other']} data={[40, 26, 18, 12, 4]} options={pieOptions} />
-        <PieCard title="EU deal coverage" labels={['Received', 'Contacted', 'On radar', 'Not ID']} data={[50, 37, 13, 0]} colors={[chartColors.rrwRed, '#6B7280', '#9CA3AF', '#D1D5DB']} options={pieOptions} />
+        <PieCard
+          title="Dealflow by region"
+          labels={Object.keys(coverageByCountry)}
+          data={Object.values(coverageByCountry).map(v => v.total)}
+          options={pieOptions}
+        />
+        <PieCard
+          title="Dealflow by stage"
+          labels={Object.keys(pieData.stageData)}
+          data={Object.values(pieData.stageData)}
+          options={pieOptions}
+        />
+        <PieCard
+          title="Seen deals by source"
+          labels={Object.keys(pieData.sourceData)}
+          data={Object.values(pieData.sourceData)}
+          options={pieOptions}
+        />
+        <PieCard
+          title="Coverage breakdown"
+          labels={['Seen (In Scope)', 'Not Seen (In Scope)', 'Out of Scope']}
+          data={[
+            deals.filter(d => d.inScope && d.seen).length,
+            deals.filter(d => d.inScope && !d.seen).length,
+            deals.filter(d => !d.inScope).length,
+          ]}
+          colors={[chartColors.rrwRed, '#6B7280', '#D1D5DB']}
+          options={pieOptions}
+        />
       </div>
 
       {/* Cold Outreach */}
@@ -248,10 +318,21 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       <Modal isOpen={!!selectedDeal} onClose={() => setSelectedDeal(null)}>
         {selectedDeal && (
           <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.company}</h2>
-                <p className="text-[13px] text-[var(--text-secondary)]">{selectedDeal.country} · {selectedDeal.stage} · €{selectedDeal.amount}M</p>
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-3">
+                {selectedDeal.logoUrl && (
+                  <img
+                    src={selectedDeal.logoUrl}
+                    alt={selectedDeal.company}
+                    className="w-12 h-12 rounded-lg object-contain bg-[var(--bg-tertiary)]"
+                  />
+                )}
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.company}</h2>
+                  <p className="text-[13px] text-[var(--text-secondary)]">
+                    {selectedDeal.country} · {selectedDeal.stage} · €{selectedDeal.amount}M
+                  </p>
+                </div>
               </div>
               <button onClick={() => setSelectedDeal(null)} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -259,18 +340,59 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                 </svg>
               </button>
             </div>
+
+            {selectedDeal.description && (
+              <p className="text-[13px] text-[var(--text-secondary)] mb-4">
+                {selectedDeal.description}
+              </p>
+            )}
+
             <div className="grid grid-cols-2 gap-3 mb-6">
               <InfoCard label="Announced" value={selectedDeal.date} />
+              <InfoCard label="Total Funding" value={selectedDeal.totalFunding || '—'} />
+              <InfoCard label="Team Size" value={selectedDeal.employeeRange || '—'} />
               <InfoCard label="Source" value={selectedDeal.source || 'Unknown'} />
               <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
               <InfoCard label="Outcome" value={selectedDeal.outcome} />
             </div>
-            <button
-              onClick={() => setSelectedDeal(null)}
-              className="w-full h-10 bg-[var(--rrw-red)] hover:bg-[var(--rrw-red-hover)] text-white font-medium rounded-lg transition-colors"
-            >
-              {selectedDeal.seen ? 'View Full Assessment' : 'Mark as Seen'}
-            </button>
+
+            {selectedDeal.industry?.length > 0 && (
+              <div className="mb-6">
+                <div className="text-[11px] text-[var(--text-tertiary)] mb-2">Industries</div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedDeal.industry.map((tag, i) => (
+                    <span key={i} className="px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-[11px] rounded">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  toggleDealState(selectedDeal.id, 'seen');
+                  setSelectedDeal({ ...selectedDeal, seen: !selectedDeal.seen });
+                }}
+                className={`flex-1 h-10 font-medium rounded-lg transition-colors ${
+                  selectedDeal.seen
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                    : 'bg-[var(--rrw-red)] hover:bg-[var(--rrw-red-hover)] text-white'
+                }`}
+              >
+                {selectedDeal.seen ? 'Mark as Not Seen' : 'Mark as Seen'}
+              </button>
+              <button
+                onClick={() => {
+                  toggleDealState(selectedDeal.id, 'inScope');
+                  setSelectedDeal({ ...selectedDeal, inScope: !selectedDeal.inScope });
+                }}
+                className="flex-1 h-10 bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-medium rounded-lg transition-colors"
+              >
+                {selectedDeal.inScope ? 'Mark Out of Scope' : 'Mark In Scope'}
+              </button>
+            </div>
           </div>
         )}
       </Modal>
@@ -296,8 +418,7 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-function DealRow({ deal, dealState, onToggle, onClick }) {
-  const state = dealState[deal.id] || { inScope: deal.inScope, seen: deal.seen };
+function DealRow({ deal, onToggle, onClick }) {
   const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
   const outcomeStyle = deal.outcome === 'DD' || deal.outcome === 'IC' ? 'bg-blue-500/10 text-blue-500' :
                        deal.outcome === 'Missed' ? 'bg-red-500/10 text-red-500' :
@@ -310,6 +431,9 @@ function DealRow({ deal, dealState, onToggle, onClick }) {
     >
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
+          {deal.logoUrl && (
+            <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)]" />
+          )}
           <span className="font-medium text-[var(--text-primary)]">{deal.company}</span>
           <span className="text-[11px] text-[var(--text-tertiary)]">{deal.country}</span>
         </div>
@@ -322,8 +446,8 @@ function DealRow({ deal, dealState, onToggle, onClick }) {
           <span className="text-[var(--text-quaternary)]">{deal.date}</span>
         </div>
         <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={state.inScope} onChange={() => onToggle(deal.id, 'inScope')} label="Scope" />
-          <Checkbox checked={state.seen} onChange={() => onToggle(deal.id, 'seen')} label="Seen" />
+          <Checkbox checked={deal.inScope} onChange={() => onToggle(deal.id, 'inScope')} label="Scope" />
+          <Checkbox checked={deal.seen} onChange={() => onToggle(deal.id, 'seen')} label="Seen" />
           <span className={`font-semibold text-[13px] ${ratingColor} min-w-[36px] text-right`}>
             {deal.rating ? deal.rating + '/10' : '—'}
           </span>
@@ -351,6 +475,21 @@ function Checkbox({ checked, onChange, label }) {
         )}
       </button>
       <span className="text-[11px] text-[var(--text-tertiary)]">{label}</span>
+    </div>
+  );
+}
+
+function CoverageCard({ region, data }) {
+  const coverageColor = data.coverage >= 80 ? 'text-emerald-500' :
+                        data.coverage >= 60 ? 'text-amber-500' : 'text-red-500';
+
+  return (
+    <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+      <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{region}</div>
+      <div className={`text-xl font-bold ${coverageColor}`}>{data.coverage}%</div>
+      <div className="text-[11px] text-[var(--text-quaternary)]">
+        {data.seen}/{data.inScope} seen
+      </div>
     </div>
   );
 }
