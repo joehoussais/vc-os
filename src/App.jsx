@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Toast from './components/Toast';
 import { useAuth, LoginScreen } from './components/Auth';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { ThemeProvider } from './hooks/useTheme';
 
 // Pages
 import LPPipeline from './pages/LPPipeline';
@@ -11,7 +12,7 @@ import DealFunnel from './pages/DealFunnel';
 import DealAnalysis from './pages/DealAnalysis';
 import Portfolio from './pages/Portfolio';
 
-function App() {
+function AppContent() {
   const { user, loading, login, logout, error } = useAuth();
   const [activeTab, setActiveTab] = useState('sourcing');
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -36,8 +37,11 @@ function App() {
   // Show loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+      <div className="min-h-screen bg-[var(--bg-secondary)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[var(--rrw-red)] border-t-transparent rounded-full animate-spin"/>
+          <span className="text-[var(--text-secondary)] text-sm">Loading...</span>
+        </div>
       </div>
     );
   }
@@ -89,6 +93,20 @@ function App() {
       </Layout>
       <Toast message={toast.message} show={toast.show} onHide={hideToast} />
     </>
+  );
+}
+
+function App() {
+  // Apply theme on initial load (before React renders)
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('rrw-theme') || 'light';
+    document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+  }, []);
+
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

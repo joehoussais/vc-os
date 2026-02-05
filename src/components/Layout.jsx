@@ -1,83 +1,139 @@
-import { useState } from 'react';
+import { useTheme } from '../hooks/useTheme';
+import { RRWLogoMark } from './RRWLogo';
 
 const tabs = [
-  { id: 'lp-pipeline', label: 'LP Pipeline', badge: '€45M' },
-  { id: 'sourcing', label: 'Sourcing', badge: '67%' },
-  { id: 'deal-funnel', label: 'Deal Funnel', badge: '0.3%' },
-  { id: 'deal-analysis', label: 'Deal Analysis', badge: '8' },
-  { id: 'portfolio', label: 'Portfolio', badge: '11' },
+  { id: 'lp-pipeline', label: 'LP Pipeline', icon: '💰' },
+  { id: 'sourcing', label: 'Sourcing', icon: '🔍' },
+  { id: 'deal-funnel', label: 'Deal Funnel', icon: '📊' },
+  { id: 'deal-analysis', label: 'Deal Analysis', icon: '⚡' },
+  { id: 'portfolio', label: 'Portfolio', icon: '🏢' },
 ];
+
+// Theme Toggle Button
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <button
+      onClick={toggleTheme}
+      className="p-2 rounded-md hover:bg-[var(--bg-hover)] transition-colors"
+      title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+    >
+      {theme === 'light' ? (
+        <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+      ) : (
+        <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// User Menu
+function UserMenu({ user, onLogout }) {
+  if (!user) return null;
+
+  const initials = user.email
+    .split('@')[0]
+    .split('.')
+    .map(n => n[0]?.toUpperCase())
+    .join('')
+    .slice(0, 2);
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-8 h-8 rounded-full bg-[var(--rrw-red)] flex items-center justify-center text-white text-xs font-medium">
+        {initials}
+      </div>
+      <button
+        onClick={onLogout}
+        className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
 
 export default function Layout({ children, activeTab, setActiveTab, onSync, user, onLogout }) {
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <svg width="40" height="40" viewBox="0 0 100 100" fill="none">
-                <rect width="100" height="100" rx="12" fill="#E63424"/>
-                <path d="M25 30h20c8 0 14 6 14 14s-6 14-14 14h-8l14 17h-12l-14-17v17h-10V30h10zm10 8v12h10c3 0 5-2 5-6s-2-6-5-6H35z" fill="white"/>
-              </svg>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">VC Operating System</h1>
-                <p className="text-sm text-gray-500">LP Pipeline → Sourcing → Deal Funnel → Deal Analysis → Portfolio</p>
+    <div className="min-h-screen bg-[var(--bg-secondary)]">
+      {/* Notion-style Header */}
+      <header className="bg-[var(--bg-primary)] border-b border-[var(--border-color)] sticky top-0 z-50">
+        <div className="max-w-[1400px] mx-auto">
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-4 py-2">
+            {/* Logo & Title */}
+            <div className="flex items-center gap-3">
+              <RRWLogoMark size={32} />
+              <div className="flex items-center gap-2">
+                <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                  VC Operating System
+                </h1>
+                <span className="text-[var(--text-tertiary)] text-sm">/</span>
+                <span className="text-[var(--text-secondary)] text-sm">Red River West</span>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            {/* Right side actions */}
+            <div className="flex items-center gap-1">
               <button
                 onClick={onSync}
-                className="bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
                 Sync
               </button>
-              {user && (
-                <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
-                  <span className="text-sm text-gray-600">{user.email}</span>
-                  <button
-                    onClick={onLogout}
-                    className="text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
+
+              <div className="w-px h-5 bg-[var(--border-color)] mx-1"/>
+
+              <ThemeToggle />
+
+              <div className="w-px h-5 bg-[var(--border-color)] mx-1"/>
+
+              <UserMenu user={user} onLogout={onLogout} />
             </div>
+          </div>
+
+          {/* Notion-style Tab Navigation */}
+          <div className="flex items-center px-4 gap-0.5">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  relative px-3 py-2 text-sm font-medium transition-all duration-150 rounded-t-md
+                  ${activeTab === tab.id
+                    ? 'text-[var(--text-primary)] bg-[var(--bg-secondary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  }
+                `}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </div>
+                {activeTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--rrw-red)]"/>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       </header>
 
-      {/* Browser-Style Tabs */}
-      <div className="flex border-b border-gray-200 bg-gray-50">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-6 py-3 text-sm font-medium transition-all flex items-center gap-2 border-b-[3px] ${
-              activeTab === tab.id
-                ? 'text-[#E63424] bg-white border-[#E63424]'
-                : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            {tab.label}
-            <span className={`text-xs px-2 py-0.5 rounded-full ${
-              activeTab === tab.id
-                ? 'bg-red-100 text-[#E63424]'
-                : 'bg-gray-200 text-gray-600'
-            }`}>
-              {tab.badge}
-            </span>
-          </button>
-        ))}
-      </div>
-
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {children}
+      <main className="max-w-[1400px] mx-auto px-4 py-6 animate-fadeIn">
+        <div className="bg-[var(--bg-primary)] rounded-lg border border-[var(--border-color)] min-h-[calc(100vh-140px)]">
+          <div className="p-6">
+            {children}
+          </div>
+        </div>
       </main>
     </div>
   );
