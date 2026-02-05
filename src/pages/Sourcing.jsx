@@ -3,6 +3,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line, Pie } from 'react-chartjs-2';
 import { coverageTimeSeriesData, chartColors, calculateCoverageByCountry } from '../data/attioData';
 import { useAttioDeals } from '../hooks/useAttioDeals';
+import { useTheme } from '../hooks/useTheme.jsx';
 import Modal from '../components/Modal';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
@@ -17,6 +18,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
   const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
+  const { theme } = useTheme();
 
   // Merge local state with Attio data
   const deals = useMemo(() => {
@@ -85,10 +87,34 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     showToast(`Updated ${field === 'inScope' ? 'scope' : 'seen'} status`);
   };
 
+  // Compute trailing 12-month (4-quarter) average
+  const trailing12mAvg = useMemo(() => {
+    const raw = coverageTimeSeriesData.data;
+    return raw.map((_, i) => {
+      if (i < 3) return null; // need at least 4 data points
+      const window = raw.slice(i - 3, i + 1);
+      return Math.round(window.reduce((a, b) => a + b, 0) / window.length);
+    });
+  }, []);
+
   const timeSeriesOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        align: 'end',
+        labels: {
+          boxWidth: 20,
+          boxHeight: 2,
+          font: { size: 11 },
+          color: 'var(--text-tertiary)',
+          usePointStyle: false,
+          padding: 16,
+        }
+      }
+    },
     scales: {
       y: {
         min: 50,
@@ -193,15 +219,28 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             <Line
               data={{
                 labels: coverageTimeSeriesData.labels,
-                datasets: [{
-                  label: 'Coverage %',
-                  data: coverageTimeSeriesData.data,
-                  borderColor: chartColors.rrwRed,
-                  backgroundColor: 'transparent',
-                  tension: 0.3,
-                  pointRadius: 3,
-                  pointBackgroundColor: chartColors.rrwRed
-                }]
+                datasets: [
+                  {
+                    label: 'Coverage %',
+                    data: coverageTimeSeriesData.data,
+                    borderColor: chartColors.rrwRed,
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: chartColors.rrwRed
+                  },
+                  {
+                    label: '12-mo trailing avg',
+                    data: trailing12mAvg,
+                    borderColor: theme === 'dark' ? '#c2c0b6' : '#141413',
+                    backgroundColor: 'transparent',
+                    borderDash: [6, 3],
+                    borderWidth: 1.5,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    spanGaps: false,
+                  }
+                ]
               }}
               options={timeSeriesOptions}
             />
