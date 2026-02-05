@@ -8,7 +8,7 @@ const tabs = [
   { id: 'portfolio', label: 'Portfolio', badge: '11' },
 ];
 
-export default function Layout({ children, activeTab, setActiveTab, onSync }) {
+export default function Layout({ children, activeTab, setActiveTab, onSync, user, onLogout }) {
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
       {/* Header */}
@@ -35,6 +35,17 @@ export default function Layout({ children, activeTab, setActiveTab, onSync }) {
                 </svg>
                 Sync
               </button>
+              {user && (
+                <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
+                  <span className="text-sm text-gray-600">{user.email}</span>
+                  <button
+                    onClick={onLogout}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
