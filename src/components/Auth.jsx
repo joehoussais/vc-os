@@ -76,14 +76,9 @@ export function LoginScreen({ onLogin, error }) {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-secondary)] flex flex-col">
-      {/* Subtle gradient overlay */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-[var(--rrw-red-subtle)] via-transparent to-transparent opacity-50" />
-      </div>
-
+    <div className="min-h-screen bg-[var(--bg-secondary)] bg-knot-pattern flex flex-col">
       {/* Main content */}
-      <div className="flex-1 flex items-center justify-center p-6 relative">
+      <div className="flex-1 flex items-center justify-center p-6 relative z-10">
         <div
           className={`
             w-full max-w-[380px]
@@ -107,7 +102,7 @@ export function LoginScreen({ onLogin, error }) {
               <h1 className="text-xl font-semibold text-[var(--text-primary)] text-center">
                 Welcome back
               </h1>
-              <p className="text-[13px] text-[var(--text-secondary)] text-center mt-1">
+              <p className="text-[13px] text-[var(--text-tertiary)] text-center mt-1.5">
                 Sign in to access the VC Operating System
               </p>
             </div>
@@ -129,7 +124,7 @@ export function LoginScreen({ onLogin, error }) {
                 className="
                   w-full h-11 flex items-center justify-center gap-3
                   bg-[var(--bg-primary)] border border-[var(--border-strong)]
-                  hover:bg-[var(--bg-hover)] hover:border-[var(--border-default)]
+                  hover:bg-[var(--bg-hover)]
                   text-[var(--text-primary)] font-medium text-[14px]
                   rounded-lg transition-all duration-150
                   shadow-[var(--shadow-xs)] hover:shadow-[var(--shadow-sm)]
@@ -168,23 +163,23 @@ export function LoginScreen({ onLogin, error }) {
       </div>
 
       {/* Theme toggle */}
-      <div className="fixed bottom-4 right-4">
+      <div className="fixed bottom-4 right-4 z-10">
         <button
           onClick={toggleTheme}
           className="
             w-9 h-9 flex items-center justify-center
             bg-[var(--bg-primary)] border border-[var(--border-default)]
-            hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)]
+            hover:bg-[var(--bg-hover)]
             rounded-lg transition-all duration-150 shadow-[var(--shadow-sm)]
           "
           title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
         >
           {theme === 'light' ? (
-            <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <svg className="w-[15px] h-[15px] text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
             </svg>
           ) : (
-            <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <svg className="w-[15px] h-[15px] text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
             </svg>
           )}

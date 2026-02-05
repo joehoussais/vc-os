@@ -1,34 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  /* RRW Brand */
+  /* RRW Brand — accent color (replaces Claude's terra cotta) */
   --rrw-red: #E63424;
   --rrw-red-hover: #D12D1F;
   --rrw-red-subtle: rgba(230, 52, 36, 0.08);
-  --rrw-red-glow: rgba(230, 52, 36, 0.15);
+  --rrw-red-glow: rgba(230, 52, 36, 0.12);
 
-  /* Light Theme - Notion/Linear inspired */
-  --bg-primary: #FFFFFF;
-  --bg-secondary: #FAFAFA;
-  --bg-tertiary: #F5F5F5;
-  --bg-elevated: #FFFFFF;
-  --bg-hover: rgba(0, 0, 0, 0.03);
-  --bg-active: rgba(0, 0, 0, 0.05);
+  /* Light Theme — Claude warm cream palette */
+  --bg-primary: #ffffff;
+  --bg-secondary: #faf9f5;
+  --bg-tertiary: #f5f4ed;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(31, 30, 29, 0.04);
+  --bg-active: rgba(31, 30, 29, 0.06);
+  --bg-surface: #f0eee6;
 
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-tertiary: #9B9B9B;
-  --text-quaternary: #BCBCBC;
+  --text-primary: #141413;
+  --text-secondary: #3d3d3a;
+  --text-tertiary: #73726c;
+  --text-quaternary: #9c9a92;
 
-  --border-default: rgba(0, 0, 0, 0.08);
-  --border-subtle: rgba(0, 0, 0, 0.04);
-  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-default: rgba(31, 30, 29, 0.10);
+  --border-subtle: rgba(31, 30, 29, 0.06);
+  --border-strong: rgba(31, 30, 29, 0.16);
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.035);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.08);
 
   /* Spacing */
   --header-height: 52px;
@@ -36,31 +37,32 @@
 }
 
 .dark {
-  /* Dark Theme - Sophisticated, layered like Linear/Raycast */
-  --bg-primary: #0D0D0D;
-  --bg-secondary: #141414;
-  --bg-tertiary: #1A1A1A;
-  --bg-elevated: #1F1F1F;
-  --bg-hover: rgba(255, 255, 255, 0.04);
-  --bg-active: rgba(255, 255, 255, 0.08);
+  /* Dark Theme — Claude warm charcoal palette */
+  --bg-primary: #262624;
+  --bg-secondary: #1f1e1d;
+  --bg-tertiary: #30302e;
+  --bg-elevated: #30302e;
+  --bg-hover: rgba(250, 249, 245, 0.05);
+  --bg-active: rgba(250, 249, 245, 0.08);
+  --bg-surface: #141413;
 
-  --text-primary: #FAFAFA;
-  --text-secondary: #A1A1A1;
-  --text-tertiary: #6B6B6B;
-  --text-quaternary: #4A4A4A;
+  --text-primary: #faf9f5;
+  --text-secondary: #c2c0b6;
+  --text-tertiary: #9c9a92;
+  --text-quaternary: #73726c;
 
-  --border-default: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-default: rgba(222, 220, 209, 0.12);
+  --border-subtle: rgba(222, 220, 209, 0.06);
+  --border-strong: rgba(222, 220, 209, 0.20);
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.6);
 
   --rrw-red-subtle: rgba(230, 52, 36, 0.12);
-  --rrw-red-glow: rgba(230, 52, 36, 0.2);
+  --rrw-red-glow: rgba(230, 52, 36, 0.18);
 }
 
 * {
@@ -73,13 +75,13 @@ html {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   letter-spacing: -0.006em;
 }
 
@@ -89,10 +91,10 @@ body {
   outline-offset: 2px;
 }
 
-/* Scrollbar - Minimal */
+/* Scrollbar — minimal, warm */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -101,7 +103,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -121,36 +123,18 @@ body {
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes shimmer {
@@ -230,4 +214,26 @@ body {
   border: 1px solid transparent;
   background: linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
               linear-gradient(135deg, var(--rrw-red), transparent) border-box;
+}
+
+/* Decorative interlocking curves — Claude-style knot pattern */
+.bg-knot-pattern {
+  position: relative;
+  overflow: hidden;
+}
+
+.bg-knot-pattern::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='240' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 120 C40 40, 120 0, 200 40 S280 160, 240 240' fill='none' stroke='%23141413' stroke-width='0.8'/%3E%3Cpath d='M120 0 C40 40, 0 120, 40 200 S160 280, 240 240' fill='none' stroke='%23141413' stroke-width='0.8'/%3E%3Cpath d='M60 0 C0 60, 20 180, 120 200 S240 180, 240 120' fill='none' stroke='%23141413' stroke-width='0.6'/%3E%3Cpath d='M0 60 C60 0, 180 20, 200 120 S180 240, 120 240' fill='none' stroke='%23141413' stroke-width='0.6'/%3E%3Cpath d='M180 0 C200 60, 160 160, 80 200 S-20 160, 0 100' fill='none' stroke='%23141413' stroke-width='0.5'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+.dark .bg-knot-pattern::before {
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='240' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 120 C40 40, 120 0, 200 40 S280 160, 240 240' fill='none' stroke='%23faf9f5' stroke-width='0.8'/%3E%3Cpath d='M120 0 C40 40, 0 120, 40 200 S160 280, 240 240' fill='none' stroke='%23faf9f5' stroke-width='0.8'/%3E%3Cpath d='M60 0 C0 60, 20 180, 120 200 S240 180, 240 120' fill='none' stroke='%23faf9f5' stroke-width='0.6'/%3E%3Cpath d='M0 60 C60 0, 180 20, 200 120 S180 240, 120 240' fill='none' stroke='%23faf9f5' stroke-width='0.6'/%3E%3Cpath d='M180 0 C200 60, 160 160, 80 200 S-20 160, 0 100' fill='none' stroke='%23faf9f5' stroke-width='0.5'/%3E%3C/svg%3E");
 }
