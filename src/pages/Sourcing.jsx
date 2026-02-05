@@ -44,8 +44,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  // Default from/to: Q1 2024 → Q1 2026 (fund-relevant range)
-  const effectiveFrom = filters.from || 'Q1 2024';
+  // Default from/to: full historical range
+  const effectiveFrom = filters.from || allQuarters[0] || 'Q1 2021';
   const effectiveTo = filters.to || 'Q1 2026';
 
   // Merge local state with Attio data
