@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
-import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar, Pie } from 'react-chartjs-2';
 import { chartColors, calculateCoverageByCountry } from '../data/attioData';
 import { useAttioDeals } from '../hooks/useAttioDeals';
 import { useTheme } from '../hooks/useTheme.jsx';
 import Modal from '../components/Modal';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend);
 
 // Helper to convert "Q1 2025" to a comparable number for sorting/filtering
 function quarterToNum(q) {
