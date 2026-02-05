@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line, Pie } from 'react-chartjs-2';
-import { attioDeals, coverageTimeSeriesData, chartColors, calculateCoverageStats, calculateCoverageByCountry } from '../data/attioData';
+import { coverageTimeSeriesData, chartColors, calculateCoverageByCountry } from '../data/attioData';
+import { useAttioDeals } from '../hooks/useAttioDeals';
 import Modal from '../components/Modal';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
@@ -15,6 +16,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     show: 'all'
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
+  const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
 
   // Merge local state with Attio data
   const deals = useMemo(() => {
@@ -23,7 +25,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       inScope: dealState[d.id]?.inScope ?? d.inScope,
       seen: dealState[d.id]?.seen ?? d.seen
     }));
-  }, [dealState]);
+  }, [dealState, attioDeals]);
 
   // Apply filters
   const filteredDeals = useMemo(() => {
@@ -215,8 +217,12 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                 {filteredDeals.length} deals shown · Mark as seen to update coverage
               </p>
             </div>
-            <span className="px-2 py-1 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500">
-              Attio Connected
+            <span className={`px-2 py-1 rounded text-[11px] font-medium ${
+              attioLoading ? 'bg-amber-500/10 text-amber-500' :
+              isLive ? 'bg-emerald-500/10 text-emerald-500' :
+              'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]'
+            }`}>
+              {attioLoading ? 'Syncing...' : isLive ? 'Attio Live' : 'Attio (Static)'}
             </span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">

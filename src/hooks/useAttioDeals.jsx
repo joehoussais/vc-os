@@ -1,101 +1,57 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetchAllDeals, fetchCompaniesByIds, getAttrValue, getAttrValues, getLocationCountryCode } from '../services/attioApi';
+import { attioDeals as staticDeals } from '../data/attioData';
 
 // Country code to region mapping
 const countryToRegion = {
-  'FR': 'France',
-  'DE': 'Germany',
-  'NL': 'Netherlands',
-  'BE': 'Belgium',
-  'SE': 'Sweden',
-  'NO': 'Norway',
-  'DK': 'Denmark',
-  'FI': 'Finland',
-  'ES': 'Spain',
-  'IT': 'Italy',
-  'PT': 'Portugal',
-  'PL': 'Poland',
-  'CZ': 'Czech Republic',
-  'AT': 'Austria',
-  'CH': 'Switzerland',
-  'IE': 'Ireland',
-  'GB': 'UK',
-  'UK': 'UK',
+  'FR': 'France', 'DE': 'Germany', 'NL': 'Netherlands', 'BE': 'Belgium',
+  'SE': 'Sweden', 'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland',
+  'ES': 'Spain', 'IT': 'Italy', 'PT': 'Portugal', 'PL': 'Poland',
+  'CZ': 'Czech Republic', 'AT': 'Austria', 'CH': 'Switzerland',
+  'IE': 'Ireland', 'GB': 'UK', 'UK': 'UK',
 };
 
 // Map country codes to broader regions for filtering
 const countryToFilterRegion = {
   'FR': 'France',
-  'DE': 'Germany',
-  'NL': 'Germany', // Benelux grouped with Germany
-  'BE': 'Germany',
-  'LU': 'Germany',
-  'SE': 'Nordics',
-  'NO': 'Nordics',
-  'DK': 'Nordics',
-  'FI': 'Nordics',
-  'IS': 'Nordics',
-  'ES': 'Southern Europe',
-  'IT': 'Southern Europe',
-  'PT': 'Southern Europe',
-  'GR': 'Southern Europe',
-  'PL': 'Eastern Europe',
-  'CZ': 'Eastern Europe',
-  'HU': 'Eastern Europe',
-  'RO': 'Eastern Europe',
-  'BG': 'Eastern Europe',
-  'SK': 'Eastern Europe',
-  'SI': 'Eastern Europe',
-  'HR': 'Eastern Europe',
-  'RS': 'Eastern Europe',
-  'UA': 'Eastern Europe',
-  'EE': 'Eastern Europe',
-  'LV': 'Eastern Europe',
-  'LT': 'Eastern Europe',
+  'DE': 'Germany', 'NL': 'Germany', 'BE': 'Germany', 'LU': 'Germany',
+  'SE': 'Nordics', 'NO': 'Nordics', 'DK': 'Nordics', 'FI': 'Nordics', 'IS': 'Nordics',
+  'ES': 'Southern Europe', 'IT': 'Southern Europe', 'PT': 'Southern Europe', 'GR': 'Southern Europe',
+  'PL': 'Eastern Europe', 'CZ': 'Eastern Europe', 'HU': 'Eastern Europe',
+  'RO': 'Eastern Europe', 'BG': 'Eastern Europe', 'SK': 'Eastern Europe',
+  'SI': 'Eastern Europe', 'HR': 'Eastern Europe', 'RS': 'Eastern Europe',
+  'UA': 'Eastern Europe', 'EE': 'Eastern Europe', 'LV': 'Eastern Europe', 'LT': 'Eastern Europe',
 };
 
-// Map funding status to stage
 const fundingStatusToStage = {
-  'pre_seed': 'Pre-Seed',
-  'seed': 'Seed',
-  'series_a': 'Series A',
-  'series_b': 'Series B',
-  'series_c': 'Series C',
-  'series_d': 'Series D',
-  'series_e': 'Series E',
-  'series_f': 'Series F',
-  'series_unknown': 'Unknown',
-  'venture_round': 'Venture',
-  'corporate_round': 'Corporate',
-  'private_equity': 'PE',
-  'angel': 'Angel',
+  'pre_seed': 'Pre-Seed', 'seed': 'Seed',
+  'series_a': 'Series A', 'series_b': 'Series B', 'series_c': 'Series C',
+  'series_d': 'Series D', 'series_e': 'Series E', 'series_f': 'Series F',
+  'series_unknown': 'Unknown', 'venture_round': 'Venture',
+  'corporate_round': 'Corporate', 'private_equity': 'PE', 'angel': 'Angel',
 };
 
-// Parse stage from deal_id (e.g., "Series A - Thorizon" -> "Series A")
 function parseStageFromDealId(dealId) {
   if (!dealId) return null;
   const match = dealId.match(/^(Series [A-Z]|Seed|Pre-Seed|Venture|Grant|Private Equity|Corporate)/i);
-  if (match) {
-    const stage = match[1];
-    if (stage.toLowerCase().includes('series')) {
-      return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase().replace('series ', 'Series ');
-    }
-    return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase();
+  if (!match) return null;
+  const stage = match[1];
+  if (stage.toLowerCase().includes('series')) {
+    return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase().replace('series ', 'Series ');
   }
-  return null;
+  return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase();
 }
 
-// Format currency amount
 function formatAmount(amount) {
   if (!amount) return null;
-  // Parse amount like "€15,362,722.00" or "US$1,400,000.00"
-  const numMatch = amount.match(/[\d,]+/);
+  if (typeof amount === 'number') return Math.round(amount / 1000000);
+  const numMatch = String(amount).match(/[\d,]+/);
   if (!numMatch) return null;
   const num = parseFloat(numMatch[0].replace(/,/g, ''));
   if (isNaN(num)) return null;
-  return Math.round(num / 1000000); // Return in millions
+  return Math.round(num / 1000000);
 }
 
-// Format date to quarter
 function dateToQuarter(dateStr) {
   if (!dateStr) return null;
   const date = new Date(dateStr);
@@ -104,94 +60,140 @@ function dateToQuarter(dateStr) {
   return `Q${quarter} ${date.getFullYear()}`;
 }
 
-// Determine if deal was "seen" based on status
 function wasDealSeen(status) {
-  return status === 'Announced deals we saw' || status === 'deal flow';
-}
-
-// Determine if deal is "in scope" - for now, all deals are considered in scope
-// This could be refined based on industry, region, etc.
-function isDealInScope(deal, company) {
-  // Basic scope: has a company linked and has announced date
-  return !!company && !!deal.announced_date;
+  if (!status) return false;
+  return status === 'Announced deals we saw' || status === 'deal flow' || status === 'deal rumors';
 }
 
 export function useAttioDeals() {
-  const [deals, setDeals] = useState([]);
+  const [deals, setDeals] = useState(staticDeals);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isLive, setIsLive] = useState(false);
 
-  // This will be populated by the MCP tools - for now we'll expose a method to set deals
-  // In a real integration, this would call the Attio API directly
-
-  const processDeals = useCallback((rawDeals, companiesMap) => {
+  const processRawDeals = useCallback((rawDeals, companiesMap) => {
     return rawDeals.map(deal => {
-      const dealAttrs = deal.attributes;
-      const companyRef = dealAttrs.associated_company_domain;
-      const company = companyRef ? companiesMap[companyRef.entity_instance_id] : null;
-      const companyAttrs = company?.attributes || {};
+      const dealName = getAttrValue(deal, 'deal_id');       // "Series A - Thorizon"
+      const status = getAttrValue(deal, 'status');           // "Announced deals we saw" (from status.title)
+      const announcedDate = getAttrValue(deal, 'announced_date'); // "2025-03-12"
 
-      // Get country from company
-      const countryCode = companyAttrs.primary_location?.country_code ||
-                         companyAttrs.cross_checked_hq_country?.slice(0, 2)?.toUpperCase();
-      const country = countryToRegion[countryCode] || companyAttrs.team_country || 'Unknown';
+      // Get linked company via record-reference
+      const companyRecordId = getAttrValue(deal, 'associated_company_domain'); // target_record_id UUID
+      const company = companyRecordId ? companiesMap[companyRecordId] : null;
+
+      // Company fields
+      const companyName = company ? getAttrValue(company, 'name') : (dealName?.split(' - ').pop() || 'Unknown');
+      const countryCode = company
+        ? (getLocationCountryCode(company, 'primary_location') ||
+           getAttrValue(company, 'cross_checked_hq_country')?.slice(0, 2)?.toUpperCase())
+        : null;
+      const country = countryToRegion[countryCode] || (company ? getAttrValue(company, 'team_country') : null) || 'Unknown';
       const filterRegion = countryToFilterRegion[countryCode] || 'Other';
 
-      // Get stage from deal_id or company's last funding status
-      const stageFromDealId = parseStageFromDealId(dealAttrs.deal_id);
-      const stageFromCompany = fundingStatusToStage[companyAttrs.last_funding_status_46];
-      const stage = stageFromDealId || stageFromCompany || 'Unknown';
+      // Stage
+      const stageFromDeal = parseStageFromDealId(dealName);
+      const stageFromCompany = company ? fundingStatusToStage[getAttrValue(company, 'last_funding_status_46')] : null;
+      const stage = stageFromDeal || stageFromCompany || 'Unknown';
 
-      // Get amount
-      const amount = formatAmount(companyAttrs.last_funding_amount);
+      // Amount
+      const amount = company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null;
 
-      // Get date
-      const announcedDate = dealAttrs.announced_date;
-      const quarter = dateToQuarter(announcedDate);
+      // Seen / In Scope
+      const seen = wasDealSeen(status);
+      const inScope = !!company && !!announcedDate;
 
-      // Determine seen/in-scope status
-      const seen = wasDealSeen(dealAttrs.status);
-      const inScope = isDealInScope(dealAttrs, company);
+      // Outcome
+      const companyStatus = company ? getAttrValue(company, 'status_4') : null;
+      let outcome = 'Missed';
+      if (seen) {
+        if (companyStatus === 'Passed') outcome = 'Passed';
+        else if (companyStatus === 'Due Dilligence' || companyStatus === 'Due Diligence') outcome = 'DD';
+        else if (companyStatus === 'IC') outcome = 'IC';
+        else if (companyStatus === 'Portfolio') outcome = 'Invested';
+        else outcome = '—';
+      }
+
+      // Industry / categories (multi-select)
+      const categories = company ? getAttrValues(company, 'categories') : [];
+
+      // Feeling / rating
+      const feeling = company ? getAttrValue(company, 'feeling') : null;
 
       return {
-        id: deal.entity_instance_id,
-        company: companyAttrs.name || dealAttrs.deal_id?.split(' - ').pop() || 'Unknown',
-        companyId: companyRef?.entity_instance_id,
+        id: deal.id?.record_id,
+        company: companyName,
         country,
         filterRegion,
         countryCode,
         stage,
         amount,
-        date: quarter,
+        date: dateToQuarter(announcedDate),
         announcedDate,
         inScope,
         seen,
-        status: dealAttrs.status,
-        industry: dealAttrs.industry || companyAttrs.categories || [],
-        source: companyAttrs.strongest_connection_strength ? 'Network' : 'Proactive',
-        rating: companyAttrs.feeling ? companyAttrs.feeling * 2 : null, // Convert 1-5 to 2-10
-        outcome: seen ? (companyAttrs.status_4 === 'Passed' ? 'Passed' :
-                        companyAttrs.status_4 === 'Due Dilligence' ? 'DD' :
-                        companyAttrs.status_4 === 'IC' ? 'IC' :
-                        companyAttrs.status_4 === 'Portfolio' ? 'Invested' : '—') : 'Missed',
-        logoUrl: companyAttrs.logo_url || companyAttrs.logo_url_7,
-        description: companyAttrs.description,
-        linkedinUrl: companyAttrs.linkedin,
-        totalFunding: companyAttrs.total_funding_amount,
-        employeeRange: companyAttrs.employee_range,
+        status,
+        industry: categories,
+        source: company && getAttrValue(company, 'strongest_connection_strength') ? 'Network' : 'Proactive',
+        rating: feeling ? feeling * 2 : null,
+        outcome,
+        logoUrl: company ? getAttrValue(company, 'logo_url') : null,
+        description: company ? getAttrValue(company, 'description') : null,
+        linkedinUrl: company ? getAttrValue(company, 'linkedin') : null,
+        totalFunding: company ? getAttrValue(company, 'total_funding_amount') : null,
+        employeeRange: company ? getAttrValue(company, 'employee_range') : null,
       };
-    }).filter(deal => deal.announcedDate); // Only include deals with announced dates
+    }).filter(deal => deal.announcedDate);
   }, []);
 
-  return {
-    deals,
-    setDeals,
-    loading,
-    setLoading,
-    error,
-    setError,
-    processDeals,
-  };
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFromApi() {
+      try {
+        setLoading(true);
+
+        const rawDeals = await fetchAllDeals();
+        if (cancelled) return;
+
+        // Extract unique company IDs from deals
+        const companyIds = [...new Set(
+          rawDeals
+            .map(d => d.values?.associated_company_domain?.[0]?.target_record_id)
+            .filter(Boolean)
+        )];
+
+        const rawCompanies = await fetchCompaniesByIds(companyIds);
+        if (cancelled) return;
+
+        // Build companies lookup by record_id
+        const companiesMap = {};
+        for (const c of rawCompanies) {
+          companiesMap[c.id?.record_id] = c;
+        }
+
+        const processed = processRawDeals(rawDeals, companiesMap);
+
+        if (!cancelled && processed.length > 0) {
+          setDeals(processed);
+          setIsLive(true);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('Failed to fetch live Attio data, using static fallback:', err.message);
+          setError(err.message);
+          setIsLive(false);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadFromApi();
+    return () => { cancelled = true; };
+  }, [processRawDeals]);
+
+  return { deals, loading, error, isLive };
 }
 
 export default useAttioDeals;

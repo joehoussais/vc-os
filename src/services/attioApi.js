@@ -1,0 +1,106 @@
+// Attio API service - calls our Netlify serverless function proxy
+
+const API_PATH = '/api/attio';
+
+async function attioQuery(endpoint, payload = {}) {
+  const res = await fetch(API_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint, payload }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Attio API error: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// Fetch all deals with pagination
+export async function fetchAllDeals() {
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = {
+      sorts: [{ attribute: 'announced_date', direction: 'desc' }],
+      limit: 100,
+    };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/deals_2/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  return allRecords;
+}
+
+// Fetch companies by IDs (batched)
+export async function fetchCompaniesByIds(companyIds) {
+  if (!companyIds.length) return [];
+
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = { limit: 100 };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/companies/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  // Filter to only the companies we need
+  const idSet = new Set(companyIds);
+  return allRecords.filter(r => idSet.has(r.id?.record_id));
+}
+
+// Helper: extract a single attribute value from an Attio record
+// Handles all Attio attribute types based on real API response format
+export function getAttrValue(record, slug) {
+  const attr = record?.values?.[slug];
+  if (!attr || !attr.length) return null;
+
+  const val = attr[0];
+
+  // text, number, date, timestamp → .value
+  if (val.value !== undefined) return val.value;
+  // status → .status.title
+  if (val.status) return val.status.title;
+  // select → .option.title
+  if (val.option) return val.option.title;
+  // record-reference → .target_record_id
+  if (val.target_record_id) return val.target_record_id;
+  // domain → .domain
+  if (val.domain !== undefined) return val.domain;
+  // location → return the whole location object (has .country_code, .locality, etc.)
+  if (val.country_code !== undefined) return val;
+  // currency → .currency_value
+  if (val.currency_value !== undefined) return val.currency_value;
+  // full name (person) → .full_name
+  if (val.full_name !== undefined) return val.full_name;
+
+  return val;
+}
+
+// Helper: extract the country code from a location attribute
+export function getLocationCountryCode(record, slug) {
+  const attr = record?.values?.[slug];
+  if (!attr || !attr.length) return null;
+  return attr[0].country_code || null;
+}
+
+// Helper: extract all values for a multi-value attribute (e.g. categories, tags)
+export function getAttrValues(record, slug) {
+  const attr = record?.values?.[slug];
+  if (!attr || !attr.length) return [];
+  return attr.map(v => {
+    if (v.option) return v.option.title;
+    if (v.status) return v.status.title;
+    if (v.value !== undefined) return v.value;
+    return v;
+  });
+}
