@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import netlifyIdentity from 'netlify-identity-widget';
 import { RRWLogoMark } from './RRWLogo';
-import { useTheme } from '../hooks/useTheme';
+import { useTheme } from '../hooks/useTheme.jsx';
 
 const ALLOWED_DOMAIN = 'redriverwest.com';
 

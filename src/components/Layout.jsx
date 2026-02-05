@@ -1,4 +1,4 @@
-import { useTheme } from '../hooks/useTheme';
+import { useTheme } from '../hooks/useTheme.jsx';
 import { RRWLogoMark } from './RRWLogo';
 
 const tabs = [

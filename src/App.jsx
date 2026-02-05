@@ -3,7 +3,7 @@ import Layout from './components/Layout';
 import Toast from './components/Toast';
 import { useAuth, LoginScreen } from './components/Auth';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { ThemeProvider } from './hooks/useTheme';
+import { ThemeProvider } from './hooks/useTheme.jsx';
 
 // Pages
 import LPPipeline from './pages/LPPipeline';
