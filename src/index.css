@@ -3,81 +3,96 @@
 :root {
   /* RRW Brand */
   --rrw-red: #E63424;
-  --rrw-red-light: #FEE2E2;
-  --rrw-red-dark: #991B1B;
   --rrw-red-hover: #D12D1F;
+  --rrw-red-subtle: rgba(230, 52, 36, 0.08);
+  --rrw-red-glow: rgba(230, 52, 36, 0.15);
 
-  /* Light theme (Notion-inspired) */
+  /* Light Theme - Notion/Linear inspired */
   --bg-primary: #FFFFFF;
-  --bg-secondary: #F7F6F3;
-  --bg-tertiary: #FFFFFF;
-  --bg-hover: #F1F0ED;
-  --bg-active: #E8E7E4;
+  --bg-secondary: #FAFAFA;
+  --bg-tertiary: #F5F5F5;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --bg-active: rgba(0, 0, 0, 0.05);
 
-  --text-primary: #37352F;
+  --text-primary: #1A1A1A;
   --text-secondary: #6B6B6B;
-  --text-tertiary: #9B9A97;
-  --text-inverted: #FFFFFF;
+  --text-tertiary: #9B9B9B;
+  --text-quaternary: #BCBCBC;
 
-  --border-color: #E5E4E1;
-  --border-hover: #D3D2CE;
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-strong: rgba(0, 0, 0, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Spacing */
+  --header-height: 52px;
+  --sidebar-width: 240px;
 }
 
 .dark {
-  --bg-primary: #191919;
-  --bg-secondary: #202020;
-  --bg-tertiary: #252525;
-  --bg-hover: #2D2D2D;
-  --bg-active: #373737;
+  /* Dark Theme - Sophisticated, layered like Linear/Raycast */
+  --bg-primary: #0D0D0D;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1A1A1A;
+  --bg-elevated: #1F1F1F;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-active: rgba(255, 255, 255, 0.08);
 
-  --text-primary: #EBEBEB;
-  --text-secondary: #9B9B9B;
+  --text-primary: #FAFAFA;
+  --text-secondary: #A1A1A1;
   --text-tertiary: #6B6B6B;
-  --text-inverted: #191919;
+  --text-quaternary: #4A4A4A;
 
-  --border-color: #2D2D2D;
-  --border-hover: #404040;
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-strong: rgba(255, 255, 255, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.4);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+
+  --rrw-red-subtle: rgba(230, 52, 36, 0.12);
+  --rrw-red-glow: rgba(230, 52, 36, 0.2);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
 body {
   margin: 0;
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.2s, color 0.2s;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
 }
 
-/* Notion-style focus */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
+/* Focus styles */
+:focus-visible {
   outline: 2px solid var(--rrw-red);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
-/* Custom scrollbar - Notion style */
+/* Scrollbar - Minimal */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -85,52 +100,95 @@ select:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: var(--border-default);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: var(--text-quaternary);
 }
 
-/* Funnel stage styles */
-.funnel-stage {
-  transition: all 0.2s ease;
-  cursor: pointer;
+/* Selection */
+::selection {
+  background: var(--rrw-red-subtle);
+  color: var(--text-primary);
 }
 
-.funnel-stage:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.funnel-stage.selected {
-  ring: 2px;
-  ring-color: var(--rrw-red);
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* Rating button styles - Notion style */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+.animate-slideUp { animation: slideUp 0.25s ease-out; }
+.animate-slideDown { animation: slideDown 0.25s ease-out; }
+.animate-scaleIn { animation: scaleIn 0.2s ease-out; }
+
+/* Transitions */
+.transition-default {
+  transition: all 0.15s ease;
+}
+
+/* Rating buttons */
 .rating-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
   background: var(--bg-primary);
   color: var(--text-secondary);
   cursor: pointer;
   font-weight: 500;
-  font-size: 12px;
+  font-size: 11px;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rating-btn:hover {
   border-color: var(--rrw-red);
-  background: var(--rrw-red-light);
   color: var(--rrw-red);
+  background: var(--rrw-red-subtle);
 }
 
 .rating-btn.selected {
@@ -142,115 +200,34 @@ select:focus-visible {
 .rating-btn.disabled {
   opacity: 0.3;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
-/* Notion-style cards */
-.notion-card {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  transition: all 0.15s ease;
+/* Funnel stages */
+.funnel-stage {
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
 
-.notion-card:hover {
+.funnel-stage:hover {
+  transform: translateY(-1px);
   box-shadow: var(--shadow-md);
-  border-color: var(--border-hover);
 }
 
-/* Notion-style buttons */
-.btn-primary {
-  background: var(--rrw-red);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+/* Utility classes */
+.text-gradient {
+  background: linear-gradient(135deg, var(--rrw-red) 0%, #FF6B5B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.btn-primary:hover {
-  background: var(--rrw-red-hover);
+.glow-red {
+  box-shadow: 0 0 20px var(--rrw-red-glow);
 }
 
-.btn-secondary {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
-}
-
-/* Notion-style inputs */
-.notion-input {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-  transition: all 0.15s ease;
-}
-
-.notion-input:hover {
-  border-color: var(--border-hover);
-}
-
-.notion-input:focus {
-  border-color: var(--rrw-red);
-  box-shadow: 0 0 0 2px var(--rrw-red-light);
-}
-
-/* Notion-style badges */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge-red {
-  background: rgba(230, 52, 36, 0.1);
-  color: var(--rrw-red);
-}
-
-.badge-gray {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-/* Animation keyframes */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.2s ease-out;
-}
-
-.animate-slideIn {
-  animation: slideIn 0.2s ease-out;
-}
-
-/* Prevent text selection on UI elements */
-.no-select {
-  user-select: none;
+.border-gradient {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+              linear-gradient(135deg, var(--rrw-red), transparent) border-box;
 }

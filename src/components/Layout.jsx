@@ -1,56 +1,46 @@
 import { useTheme } from '../hooks/useTheme.jsx';
-import { RRWLogoMark } from './RRWLogo';
 
 const tabs = [
-  { id: 'lp-pipeline', label: 'LP Pipeline', icon: '💰' },
-  { id: 'sourcing', label: 'Sourcing', icon: '🔍' },
-  { id: 'deal-funnel', label: 'Deal Funnel', icon: '📊' },
-  { id: 'deal-analysis', label: 'Deal Analysis', icon: '⚡' },
-  { id: 'portfolio', label: 'Portfolio', icon: '🏢' },
+  { id: 'lp-pipeline', label: 'LP Pipeline' },
+  { id: 'sourcing', label: 'Sourcing' },
+  { id: 'deal-funnel', label: 'Deal Funnel' },
+  { id: 'deal-analysis', label: 'Deal Analysis' },
+  { id: 'portfolio', label: 'Portfolio' },
 ];
 
-// Theme Toggle Button
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <button
       onClick={toggleTheme}
-      className="p-2 rounded-md hover:bg-[var(--bg-hover)] transition-colors"
+      className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] transition-all duration-150"
       title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
     >
       {theme === 'light' ? (
-        <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
         </svg>
       ) : (
-        <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
         </svg>
       )}
     </button>
   );
 }
 
-// User Menu
 function UserMenu({ user, onLogout }) {
   if (!user) return null;
 
-  const initials = user.email
-    .split('@')[0]
-    .split('.')
-    .map(n => n[0]?.toUpperCase())
-    .join('')
-    .slice(0, 2);
-
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-8 h-8 rounded-full bg-[var(--rrw-red)] flex items-center justify-center text-white text-xs font-medium">
-        {initials}
-      </div>
+    <div className="flex items-center gap-3">
+      <span className="text-[13px] text-[var(--text-secondary)] hidden sm:block">
+        {user.email.split('@')[0]}
+      </span>
       <button
         onClick={onLogout}
-        className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+        className="text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
       >
         Sign out
       </button>
@@ -59,80 +49,79 @@ function UserMenu({ user, onLogout }) {
 }
 
 export default function Layout({ children, activeTab, setActiveTab, onSync, user, onLogout }) {
+  const { theme } = useTheme();
+
   return (
     <div className="min-h-screen bg-[var(--bg-secondary)]">
-      {/* Notion-style Header */}
-      <header className="bg-[var(--bg-primary)] border-b border-[var(--border-color)] sticky top-0 z-50">
-        <div className="max-w-[1400px] mx-auto">
-          {/* Top bar */}
-          <div className="flex items-center justify-between px-4 py-2">
-            {/* Logo & Title */}
-            <div className="flex items-center gap-3">
-              <RRWLogoMark size={32} />
-              <div className="flex items-center gap-2">
-                <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">
-                  VC Operating System
-                </h1>
-                <span className="text-[var(--text-tertiary)] text-sm">/</span>
-                <span className="text-[var(--text-secondary)] text-sm">Red River West</span>
-              </div>
-            </div>
-
-            {/* Right side actions */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onSync}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Sync
-              </button>
-
-              <div className="w-px h-5 bg-[var(--border-color)] mx-1"/>
-
-              <ThemeToggle />
-
-              <div className="w-px h-5 bg-[var(--border-color)] mx-1"/>
-
-              <UserMenu user={user} onLogout={onLogout} />
-            </div>
+      {/* Header */}
+      <header className="h-[52px] bg-[var(--bg-primary)] border-b border-[var(--border-default)] sticky top-0 z-50">
+        <div className="h-full max-w-[1440px] mx-auto px-4 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-4">
+            <img
+              src={theme === 'dark' ? '/RRW_LOGO_WHITE.png' : '/RRW_LOGO_HORIZONTAL_RED.png'}
+              alt="Red River West"
+              className="h-7 w-auto"
+            />
+            <div className="hidden md:block h-4 w-px bg-[var(--border-default)]" />
+            <span className="hidden md:block text-[13px] font-medium text-[var(--text-secondary)]">
+              VC Operating System
+            </span>
           </div>
 
-          {/* Notion-style Tab Navigation */}
-          <div className="flex items-center px-4 gap-0.5">
+          {/* Right actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSync}
+              className="h-8 px-3 flex items-center gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md transition-all duration-150"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Sync</span>
+            </button>
+
+            <div className="h-4 w-px bg-[var(--border-default)]" />
+
+            <ThemeToggle />
+
+            <div className="h-4 w-px bg-[var(--border-default)]" />
+
+            <UserMenu user={user} onLogout={onLogout} />
+          </div>
+        </div>
+      </header>
+
+      {/* Tab Navigation */}
+      <nav className="bg-[var(--bg-primary)] border-b border-[var(--border-default)]">
+        <div className="max-w-[1440px] mx-auto px-4">
+          <div className="flex items-center gap-1 -mb-px">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  relative px-3 py-2 text-sm font-medium transition-all duration-150 rounded-t-md
+                  relative h-10 px-3 text-[13px] font-medium transition-all duration-150
                   ${activeTab === tab.id
-                    ? 'text-[var(--text-primary)] bg-[var(--bg-secondary)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
                   }
                 `}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </div>
+                {tab.label}
                 {activeTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--rrw-red)]"/>
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--rrw-red)]" />
                 )}
               </button>
             ))}
           </div>
         </div>
-      </header>
+      </nav>
 
       {/* Main Content */}
-      <main className="max-w-[1400px] mx-auto px-4 py-6 animate-fadeIn">
-        <div className="bg-[var(--bg-primary)] rounded-lg border border-[var(--border-color)] min-h-[calc(100vh-140px)]">
-          <div className="p-6">
-            {children}
-          </div>
+      <main className="max-w-[1440px] mx-auto p-4">
+        <div className="animate-fadeIn">
+          {children}
         </div>
       </main>
     </div>
