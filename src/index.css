@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --rrw-red: #E63424;
+  --rrw-red-light: #FEE2E2;
+  --rrw-red-dark: #991B1B;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #ffffff;
+  color: #1f2937;
+}
+
+/* Funnel stage styles */
+.funnel-stage {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.funnel-stage:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 20px rgba(230, 52, 36, 0.2);
+}
+
+.funnel-stage.selected {
+  border: 3px solid var(--rrw-red);
+}
+
+/* Rating button styles */
+.rating-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.rating-btn:hover {
+  border-color: var(--rrw-red);
+  background: var(--rrw-red-light);
+}
+
+.rating-btn.selected {
+  background: var(--rrw-red);
+  border-color: var(--rrw-red);
+  color: white;
+}
+
+.rating-btn.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
