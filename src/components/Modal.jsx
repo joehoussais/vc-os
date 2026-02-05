@@ -21,11 +21,11 @@ export default function Modal({ isOpen, onClose, children }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 transition-opacity"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto shadow-xl transform transition-transform"
+        className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-xl max-w-[500px] w-[90%] max-h-[85vh] overflow-y-auto shadow-[var(--shadow-xl)] animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
         {children}

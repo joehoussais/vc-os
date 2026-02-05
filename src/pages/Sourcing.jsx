@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line, Pie } from 'react-chartjs-2';
 import { dealsData, coverageTimeSeriesData, chartColors } from '../data/mockData';
@@ -47,106 +47,119 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    scales: { y: { min: 50, max: 105, ticks: { callback: v => v + '%' } } }
+    scales: {
+      y: {
+        min: 50,
+        max: 105,
+        ticks: {
+          callback: v => v + '%',
+          color: 'var(--text-tertiary)'
+        },
+        grid: { color: 'var(--border-subtle)' }
+      },
+      x: {
+        ticks: { color: 'var(--text-tertiary)' },
+        grid: { color: 'var(--border-subtle)' }
+      }
+    }
   };
 
   const pieOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          boxWidth: 12,
+          font: { size: 10 },
+          color: 'var(--text-secondary)'
+        }
+      }
+    }
   };
 
   return (
-    <div className="animate-in">
+    <div>
       {/* Filter Bar */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Country</label>
-            <select
-              value={filters.country}
-              onChange={(e) => setFilters({ ...filters, country: e.target.value })}
-              className="w-40 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#E63424] focus:ring-2 focus:ring-red-100"
-            >
-              <option value="all">All Countries</option>
-              <option value="France">France</option>
-              <option value="Germany">Germany</option>
-              <option value="Nordics">Nordics</option>
-              <option value="Southern Europe">Southern Europe</option>
-              <option value="Eastern Europe">Eastern Europe</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Stage</label>
-            <select
-              value={filters.stage}
-              onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
-              className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#E63424] focus:ring-2 focus:ring-red-100"
-            >
-              <option value="all">All Stages</option>
-              <option value="Seed">Seed</option>
-              <option value="Series A">Series A</option>
-              <option value="Series B">Series B</option>
-              <option value="Series C">Series C</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">From</label>
-            <select
-              value={filters.from}
-              onChange={(e) => setFilters({ ...filters, from: e.target.value })}
-              className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#E63424] focus:ring-2 focus:ring-red-100"
-            >
-              <option value="Q1 2021">Q1 2021</option>
-              <option value="Q1 2022">Q1 2022</option>
-              <option value="Q1 2023">Q1 2023</option>
-              <option value="Q1 2024">Q1 2024</option>
-              <option value="Q1 2025">Q1 2025</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">To</label>
-            <select
-              value={filters.to}
-              onChange={(e) => setFilters({ ...filters, to: e.target.value })}
-              className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#E63424] focus:ring-2 focus:ring-red-100"
-            >
-              <option value="Q4 2025">Q4 2025</option>
-              <option value="Q3 2025">Q3 2025</option>
-              <option value="Q2 2025">Q2 2025</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Show</label>
-            <select
-              value={filters.show}
-              onChange={(e) => setFilters({ ...filters, show: e.target.value })}
-              className="w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#E63424] focus:ring-2 focus:ring-red-100"
-            >
-              <option value="all">All Deals</option>
-              <option value="in-scope">In Scope Only</option>
-              <option value="unseen">Unseen Only</option>
-            </select>
-          </div>
+          <FilterSelect
+            label="Country"
+            value={filters.country}
+            onChange={(v) => setFilters({ ...filters, country: v })}
+            options={[
+              { value: 'all', label: 'All Countries' },
+              { value: 'France', label: 'France' },
+              { value: 'Germany', label: 'Germany' },
+              { value: 'Nordics', label: 'Nordics' },
+              { value: 'Southern Europe', label: 'Southern Europe' },
+              { value: 'Eastern Europe', label: 'Eastern Europe' },
+              { value: 'Other', label: 'Other' },
+            ]}
+          />
+          <FilterSelect
+            label="Stage"
+            value={filters.stage}
+            onChange={(v) => setFilters({ ...filters, stage: v })}
+            options={[
+              { value: 'all', label: 'All Stages' },
+              { value: 'Seed', label: 'Seed' },
+              { value: 'Series A', label: 'Series A' },
+              { value: 'Series B', label: 'Series B' },
+              { value: 'Series C', label: 'Series C' },
+            ]}
+          />
+          <FilterSelect
+            label="From"
+            value={filters.from}
+            onChange={(v) => setFilters({ ...filters, from: v })}
+            options={[
+              { value: 'Q1 2021', label: 'Q1 2021' },
+              { value: 'Q1 2022', label: 'Q1 2022' },
+              { value: 'Q1 2023', label: 'Q1 2023' },
+              { value: 'Q1 2024', label: 'Q1 2024' },
+              { value: 'Q1 2025', label: 'Q1 2025' },
+            ]}
+          />
+          <FilterSelect
+            label="To"
+            value={filters.to}
+            onChange={(v) => setFilters({ ...filters, to: v })}
+            options={[
+              { value: 'Q4 2025', label: 'Q4 2025' },
+              { value: 'Q3 2025', label: 'Q3 2025' },
+              { value: 'Q2 2025', label: 'Q2 2025' },
+            ]}
+          />
+          <FilterSelect
+            label="Show"
+            value={filters.show}
+            onChange={(v) => setFilters({ ...filters, show: v })}
+            options={[
+              { value: 'all', label: 'All Deals' },
+              { value: 'in-scope', label: 'In Scope Only' },
+              { value: 'unseen', label: 'Unseen Only' },
+            ]}
+          />
         </div>
       </div>
 
-      {/* Main Section: Graph LEFT, Deals RIGHT */}
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        {/* LEFT: Coverage Time Series */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
+      {/* Main Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Coverage Chart */}
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-semibold text-gray-900">Coverage Rate</h3>
-              <p className="text-xs text-gray-500">2020 - Q3 2025</p>
+              <h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3>
+              <p className="text-xs text-[var(--text-tertiary)]">2020 - Q3 2025</p>
             </div>
             <div className="text-right">
-              <span className="text-3xl font-bold text-[#E63424]">86%</span>
-              <span className="text-sm text-gray-500 block">Q3 2025</span>
+              <span className="text-3xl font-bold text-[var(--rrw-red)]">86%</span>
+              <span className="text-xs text-[var(--text-tertiary)] block">Q3 2025</span>
             </div>
           </div>
-          <div className="h-80">
+          <div className="h-72">
             <Line
               data={{
                 labels: coverageTimeSeriesData.labels,
@@ -156,237 +169,226 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                   borderColor: chartColors.rrwRed,
                   backgroundColor: 'transparent',
                   tension: 0.3,
-                  pointRadius: 4,
+                  pointRadius: 3,
                   pointBackgroundColor: chartColors.rrwRed
                 }]
               }}
               options={timeSeriesOptions}
             />
           </div>
-          <p className="text-xs text-gray-400 mt-3">% of deals in RRW scope announced during the period received by RRW</p>
         </div>
 
-        {/* RIGHT: Recent Deals */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col">
+        {/* Recent Deals */}
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-semibold text-gray-900">Recent Deals</h3>
-              <p className="text-sm text-gray-500">{filteredDeals.length} deals · {inScopeCount} in scope · {coverage}% coverage</p>
+              <h3 className="font-semibold text-[var(--text-primary)]">Recent Deals</h3>
+              <p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals · {inScopeCount} in scope · {coverage}% coverage</p>
             </div>
-            <button className="bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors">
+            <button className="h-8 px-3 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] rounded-md transition-all">
               Export
             </button>
           </div>
-          <div className="border rounded-lg overflow-hidden flex-1 max-h-96 overflow-y-auto">
-            {filteredDeals.map(deal => {
-              const state = dealState[deal.id] || { inScope: deal.inScope, seen: deal.seen };
-              const ratingColor = deal.rating >= 7 ? 'text-emerald-600' : deal.rating >= 4 ? 'text-amber-600' : deal.rating ? 'text-red-600' : 'text-gray-300';
-              const outcomeStyle = deal.outcome === 'DD' || deal.outcome === 'IC' ? 'bg-blue-100 text-blue-700' :
-                                   deal.outcome === 'Missed' ? 'bg-red-100 text-red-700' :
-                                   deal.outcome === 'Passed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-50 text-gray-400';
-              return (
-                <div
-                  key={deal.id}
-                  className="p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => setSelectedDeal(deal)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-900">{deal.company}</span>
-                      <span className="text-xs text-gray-400">{deal.country}</span>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${outcomeStyle}`}>{deal.outcome}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{deal.stage}</span>
-                      <span className="text-gray-500">€{deal.amount}M</span>
-                      <span className="text-gray-400">{deal.date}</span>
-                    </div>
-                    <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => toggleDealState(deal.id, 'inScope')}
-                          className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
-                            state.inScope ? 'bg-[#E63424] border-[#E63424] text-white' : 'border-gray-300'
-                          }`}
-                        >
-                          {state.inScope && '✓'}
-                        </button>
-                        <span className="text-xs text-gray-400">Scope</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => toggleDealState(deal.id, 'seen')}
-                          className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
-                            state.seen ? 'bg-[#E63424] border-[#E63424] text-white' : 'border-gray-300'
-                          }`}
-                        >
-                          {state.seen && '✓'}
-                        </button>
-                        <span className="text-xs text-gray-400">Seen</span>
-                      </div>
-                      <span className={`font-bold ${ratingColor} min-w-[40px] text-right`}>
-                        {deal.rating ? deal.rating + '/10' : '—'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
+            {filteredDeals.map(deal => (
+              <DealRow
+                key={deal.id}
+                deal={deal}
+                dealState={dealState}
+                onToggle={toggleDealState}
+                onClick={() => setSelectedDeal(deal)}
+              />
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Analytics Section */}
-      <div className="border-t border-gray-200 pt-6 mb-6">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Analytics</h3>
+      {/* Analytics */}
+      <div className="border-t border-[var(--border-default)] pt-4 mb-4">
+        <h3 className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-4">Analytics</h3>
       </div>
 
-      {/* Pie Charts Row */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Dealflow by country</h4>
-          <div className="h-48">
-            <Pie
-              data={{
-                labels: ['France', 'Germany', 'Nordics', 'S. Europe', 'E. Europe', 'Other'],
-                datasets: [{ data: [50, 14, 8, 6, 8, 14], backgroundColor: chartColors.colors }]
-              }}
-              options={pieOptions}
-            />
-          </div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Dealflow by stage</h4>
-          <div className="h-48">
-            <Pie
-              data={{
-                labels: ['Series A', 'Seed', 'Series B', 'Series C'],
-                datasets: [{ data: [58, 25, 12, 5], backgroundColor: chartColors.colors }]
-              }}
-              options={pieOptions}
-            />
-          </div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Dealflow by source</h4>
-          <div className="h-48">
-            <Pie
-              data={{
-                labels: ['Proactive', 'Intermediate', 'VC Network', 'Inbound', 'Other'],
-                datasets: [{ data: [40, 26, 18, 12, 4], backgroundColor: chartColors.colors }]
-              }}
-              options={pieOptions}
-            />
-          </div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">EU deal coverage</h4>
-          <div className="h-48">
-            <Pie
-              data={{
-                labels: ['Received', 'Contacted', 'On radar', 'Not ID'],
-                datasets: [{ data: [50, 37, 13, 0], backgroundColor: [chartColors.rrwRed, '#6B7280', '#D1D5DB', '#F3F4F6'] }]
-              }}
-              options={pieOptions}
-            />
-          </div>
-        </div>
+      {/* Pie Charts */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <PieCard title="Dealflow by country" labels={['France', 'Germany', 'Nordics', 'S. Europe', 'E. Europe', 'Other']} data={[50, 14, 8, 6, 8, 14]} options={pieOptions} />
+        <PieCard title="Dealflow by stage" labels={['Series A', 'Seed', 'Series B', 'Series C']} data={[58, 25, 12, 5]} options={pieOptions} />
+        <PieCard title="Dealflow by source" labels={['Proactive', 'Intermediate', 'VC Network', 'Inbound', 'Other']} data={[40, 26, 18, 12, 4]} options={pieOptions} />
+        <PieCard title="EU deal coverage" labels={['Received', 'Contacted', 'On radar', 'Not ID']} data={[50, 37, 13, 0]} colors={[chartColors.rrwRed, '#6B7280', '#9CA3AF', '#D1D5DB']} options={pieOptions} />
       </div>
 
-      {/* Cold Outreach Effectiveness */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
+      {/* Cold Outreach */}
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="font-semibold text-gray-900">Cold Outreach Effectiveness</h3>
-            <p className="text-sm text-gray-500">Tracking proactive emails → coverage impact</p>
+            <h3 className="font-semibold text-[var(--text-primary)]">Cold Outreach Effectiveness</h3>
+            <p className="text-xs text-[var(--text-tertiary)]">Tracking proactive emails → coverage impact</p>
           </div>
-          <span className="px-3 py-1 rounded-md bg-blue-100 text-blue-700 text-sm font-medium">Slack MCP Integration</span>
+          <span className="px-2 py-1 rounded text-[11px] font-medium bg-blue-500/10 text-blue-500">Slack MCP</span>
         </div>
-        <table className="w-full text-sm">
+        <table className="w-full text-[13px]">
           <thead>
-            <tr className="text-left text-xs text-gray-500 uppercase border-b">
-              <th className="pb-3">Team Member</th>
-              <th className="pb-3">Emails Sent</th>
-              <th className="pb-3">Responses</th>
-              <th className="pb-3">Meetings</th>
-              <th className="pb-3">Coverage Impact</th>
+            <tr className="text-left text-[11px] text-[var(--text-tertiary)] uppercase border-b border-[var(--border-default)]">
+              <th className="pb-3 font-medium">Team Member</th>
+              <th className="pb-3 font-medium">Emails Sent</th>
+              <th className="pb-3 font-medium">Responses</th>
+              <th className="pb-3 font-medium">Meetings</th>
+              <th className="pb-3 font-medium">Coverage Impact</th>
             </tr>
           </thead>
-          <tbody>
-            <tr className="border-b border-gray-100">
-              <td className="py-3 font-medium">Joseph</td>
-              <td className="py-3">45</td>
-              <td className="py-3">12 (27%)</td>
-              <td className="py-3">8</td>
-              <td className="py-3"><span className="text-emerald-600 font-medium">+3.2%</span></td>
-            </tr>
-            <tr className="border-b border-gray-100">
-              <td className="py-3 font-medium">Chloe</td>
-              <td className="py-3">62</td>
-              <td className="py-3">18 (29%)</td>
-              <td className="py-3">11</td>
-              <td className="py-3"><span className="text-emerald-600 font-medium">+4.1%</span></td>
-            </tr>
-            <tr className="border-b border-gray-100">
-              <td className="py-3 font-medium">Olivier</td>
-              <td className="py-3">38</td>
-              <td className="py-3">14 (37%)</td>
-              <td className="py-3">9</td>
-              <td className="py-3"><span className="text-emerald-600 font-medium">+2.8%</span></td>
-            </tr>
-            <tr>
-              <td className="py-3 font-bold">Total</td>
-              <td className="py-3 font-bold">145</td>
-              <td className="py-3 font-bold">44 (30%)</td>
-              <td className="py-3 font-bold">28</td>
-              <td className="py-3"><span className="text-emerald-600 font-bold">+10.1%</span></td>
-            </tr>
+          <tbody className="text-[var(--text-primary)]">
+            <OutreachRow name="Joseph" sent={45} responses="12 (27%)" meetings={8} impact="+3.2%" />
+            <OutreachRow name="Chloe" sent={62} responses="18 (29%)" meetings={11} impact="+4.1%" />
+            <OutreachRow name="Olivier" sent={38} responses="14 (37%)" meetings={9} impact="+2.8%" />
+            <OutreachRow name="Total" sent={145} responses="44 (30%)" meetings={28} impact="+10.1%" isTotal />
           </tbody>
         </table>
       </div>
 
-      {/* Deal Modal */}
+      {/* Modal */}
       <Modal isOpen={!!selectedDeal} onClose={() => setSelectedDeal(null)}>
         {selectedDeal && (
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold">{selectedDeal.company}</h2>
-                <p className="text-sm text-gray-500">{selectedDeal.country} · {selectedDeal.stage} · €{selectedDeal.amount}M</p>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.company}</h2>
+                <p className="text-[13px] text-[var(--text-secondary)]">{selectedDeal.country} · {selectedDeal.stage} · €{selectedDeal.amount}M</p>
               </div>
-              <button onClick={() => setSelectedDeal(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              <button onClick={() => setSelectedDeal(null)} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">Announced</div>
-                <div className="font-bold">{selectedDeal.date}</div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">Source</div>
-                <div className="font-bold">{selectedDeal.source || 'Unknown'}</div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">Rating</div>
-                <div className={`font-bold ${selectedDeal.rating >= 7 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                  {selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'}
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">Outcome</div>
-                <div className="font-bold">{selectedDeal.outcome}</div>
-              </div>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <InfoCard label="Announced" value={selectedDeal.date} />
+              <InfoCard label="Source" value={selectedDeal.source || 'Unknown'} />
+              <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
+              <InfoCard label="Outcome" value={selectedDeal.outcome} />
             </div>
             <button
               onClick={() => setSelectedDeal(null)}
-              className="w-full bg-[#E63424] text-white py-3 rounded-lg font-medium hover:bg-[#C42A1D] transition-colors"
+              className="w-full h-10 bg-[var(--rrw-red)] hover:bg-[var(--rrw-red-hover)] text-white font-medium rounded-lg transition-colors"
             >
               {selectedDeal.seen ? 'View Full Assessment' : 'Mark as Seen'}
             </button>
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// Components
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="text-[11px] font-medium text-[var(--text-tertiary)] block mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 px-3 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-md text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--rrw-red)] transition-colors"
+      >
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function DealRow({ deal, dealState, onToggle, onClick }) {
+  const state = dealState[deal.id] || { inScope: deal.inScope, seen: deal.seen };
+  const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
+  const outcomeStyle = deal.outcome === 'DD' || deal.outcome === 'IC' ? 'bg-blue-500/10 text-blue-500' :
+                       deal.outcome === 'Missed' ? 'bg-red-500/10 text-red-500' :
+                       deal.outcome === 'Passed' ? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]' : 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
+
+  return (
+    <div
+      className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors"
+      onClick={onClick}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-[var(--text-primary)]">{deal.company}</span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">{deal.country}</span>
+        </div>
+        <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${outcomeStyle}`}>{deal.outcome}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="px-1.5 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded">{deal.stage}</span>
+          <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>
+          <span className="text-[var(--text-quaternary)]">{deal.date}</span>
+        </div>
+        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={state.inScope} onChange={() => onToggle(deal.id, 'inScope')} label="Scope" />
+          <Checkbox checked={state.seen} onChange={() => onToggle(deal.id, 'seen')} label="Seen" />
+          <span className={`font-semibold text-[13px] ${ratingColor} min-w-[36px] text-right`}>
+            {deal.rating ? deal.rating + '/10' : '—'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Checkbox({ checked, onChange, label }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={onChange}
+        className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+          checked
+            ? 'bg-[var(--rrw-red)] border-[var(--rrw-red)]'
+            : 'border-[var(--border-strong)] hover:border-[var(--rrw-red)]'
+        }`}
+      >
+        {checked && (
+          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+      <span className="text-[11px] text-[var(--text-tertiary)]">{label}</span>
+    </div>
+  );
+}
+
+function PieCard({ title, labels, data, colors, options }) {
+  return (
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
+      <h4 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">{title}</h4>
+      <div className="h-40">
+        <Pie
+          data={{
+            labels,
+            datasets: [{ data, backgroundColor: colors || chartColors.colors }]
+          }}
+          options={options}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OutreachRow({ name, sent, responses, meetings, impact, isTotal }) {
+  return (
+    <tr className={`border-b border-[var(--border-subtle)] ${isTotal ? 'font-semibold' : ''}`}>
+      <td className="py-3">{name}</td>
+      <td className="py-3">{sent}</td>
+      <td className="py-3">{responses}</td>
+      <td className="py-3">{meetings}</td>
+      <td className="py-3"><span className="text-emerald-500 font-medium">{impact}</span></td>
+    </tr>
+  );
+}
+
+function InfoCard({ label, value, highlight }) {
+  return (
+    <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+      <div className="text-[11px] text-[var(--text-tertiary)] mb-0.5">{label}</div>
+      <div className={`font-medium ${highlight ? 'text-emerald-500' : 'text-[var(--text-primary)]'}`}>{value}</div>
     </div>
   );
 }
