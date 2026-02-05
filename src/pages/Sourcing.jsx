@@ -61,23 +61,13 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
 
   // Calculate pie chart data
   const pieData = useMemo(() => {
-    const countryData = Object.entries(coverageByCountry)
-      .filter(([_, v]) => v.total > 0)
-      .map(([k, v]) => ({ label: k, value: v.total }));
-
     const stageData = {};
     deals.forEach(d => {
       stageData[d.stage] = (stageData[d.stage] || 0) + 1;
     });
 
-    const sourceData = {};
-    deals.filter(d => d.seen).forEach(d => {
-      const source = d.source || 'Unknown';
-      sourceData[source] = (sourceData[source] || 0) + 1;
-    });
-
-    return { countryData, stageData, sourceData };
-  }, [deals, coverageByCountry]);
+    return { stageData };
+  }, [deals]);
 
   const toggleDealState = (dealId, field) => {
     const deal = deals.find(d => d.id === dealId);
@@ -299,7 +289,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       </div>
 
       {/* Pie Charts */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <PieCard
           title="Dealflow by region"
           labels={Object.keys(coverageByCountry)}
@@ -310,12 +300,6 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
           title="Dealflow by stage"
           labels={Object.keys(pieData.stageData)}
           data={Object.values(pieData.stageData)}
-          options={pieOptions}
-        />
-        <PieCard
-          title="Seen deals by source"
-          labels={Object.keys(pieData.sourceData)}
-          data={Object.values(pieData.sourceData)}
           options={pieOptions}
         />
         <PieCard
@@ -373,9 +357,9 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                   />
                 )}
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.company}</h2>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.dealName || selectedDeal.company}</h2>
                   <p className="text-[13px] text-[var(--text-secondary)]">
-                    {selectedDeal.country} · {selectedDeal.stage} · €{selectedDeal.amount}M
+                    {selectedDeal.country}{selectedDeal.amount > 0 ? ` · €${selectedDeal.amount}M` : ''}
                   </p>
                 </div>
               </div>
@@ -396,9 +380,9 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
               <InfoCard label="Announced" value={selectedDeal.date} />
               <InfoCard label="Total Funding" value={selectedDeal.totalFunding || '—'} />
               <InfoCard label="Team Size" value={selectedDeal.employeeRange || '—'} />
-              <InfoCard label="Source" value={selectedDeal.source || 'Unknown'} />
               <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
               <InfoCard label="Outcome" value={selectedDeal.outcome} />
+              <InfoCard label="Status" value={selectedDeal.status || '—'} />
             </div>
 
             {selectedDeal.industry?.length > 0 && (
@@ -475,19 +459,18 @@ function DealRow({ deal, onToggle, onClick }) {
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {deal.logoUrl && (
-            <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)]" />
+            <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />
           )}
-          <span className="font-medium text-[var(--text-primary)]">{deal.company}</span>
-          <span className="text-[11px] text-[var(--text-tertiary)]">{deal.country}</span>
+          <span className="font-medium text-[var(--text-primary)] truncate">{deal.dealName || deal.company}</span>
+          <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country}</span>
         </div>
-        <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${outcomeStyle}`}>{deal.outcome}</span>
+        <span className={`text-[11px] px-2 py-0.5 rounded font-medium shrink-0 ${outcomeStyle}`}>{deal.outcome}</span>
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="px-1.5 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded">{deal.stage}</span>
-          <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>
+          {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>}
           <span className="text-[var(--text-quaternary)]">{deal.date}</span>
         </div>
         <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>

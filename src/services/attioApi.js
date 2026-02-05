@@ -1,6 +1,8 @@
 // Attio API service - calls our Netlify serverless function proxy
 
 const API_PATH = '/api/attio';
+const CACHE_KEY = 'attio-deals-cache';
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 async function attioQuery(endpoint, payload = {}) {
   const res = await fetch(API_PATH, {
@@ -37,25 +39,64 @@ export async function fetchAllDeals() {
   return allRecords;
 }
 
-// Fetch companies by IDs (batched)
+// Fetch companies by IDs using filter (much faster than fetching all)
 export async function fetchCompaniesByIds(companyIds) {
   if (!companyIds.length) return [];
 
+  // Attio supports filtering by record IDs in the query endpoint
+  // Batch into chunks of 50 to avoid overly large filter arrays
+  const chunks = [];
+  for (let i = 0; i < companyIds.length; i += 50) {
+    chunks.push(companyIds.slice(i, i + 50));
+  }
+
   let allRecords = [];
-  let offset = null;
 
-  do {
-    const payload = { limit: 100 };
-    if (offset) payload.offset = offset;
+  for (const chunk of chunks) {
+    let offset = null;
+    do {
+      const payload = {
+        filter: {
+          "record_id": { "$in": chunk }
+        },
+        limit: 100,
+      };
+      if (offset) payload.offset = offset;
 
-    const data = await attioQuery('/objects/companies/records/query', payload);
-    allRecords = allRecords.concat(data.data || []);
-    offset = data.next_page_offset || null;
-  } while (offset);
+      const data = await attioQuery('/objects/companies/records/query', payload);
+      allRecords = allRecords.concat(data.data || []);
+      offset = data.next_page_offset || null;
+    } while (offset);
+  }
 
-  // Filter to only the companies we need
-  const idSet = new Set(companyIds);
-  return allRecords.filter(r => idSet.has(r.id?.record_id));
+  return allRecords;
+}
+
+// Session cache: save processed deals so page refreshes are instant
+export function getCachedDeals() {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { data, timestamp } = JSON.parse(raw);
+    if (Date.now() - timestamp > CACHE_TTL) {
+      sessionStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedDeals(deals) {
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+      data: deals,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // sessionStorage full or unavailable — ignore
+  }
 }
 
 // Helper: extract a single attribute value from an Attio record

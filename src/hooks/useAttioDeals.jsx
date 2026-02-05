@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllDeals, fetchCompaniesByIds, getAttrValue, getAttrValues, getLocationCountryCode } from '../services/attioApi';
+import { fetchAllDeals, fetchCompaniesByIds, getAttrValue, getAttrValues, getLocationCountryCode, getCachedDeals, setCachedDeals } from '../services/attioApi';
 import { attioDeals as staticDeals } from '../data/attioData';
 
 // Country code to region mapping
@@ -66,10 +66,12 @@ function wasDealSeen(status) {
 }
 
 export function useAttioDeals() {
-  const [deals, setDeals] = useState(staticDeals);
-  const [loading, setLoading] = useState(true);
+  // Load from session cache immediately for instant page refreshes
+  const cached = getCachedDeals();
+  const [deals, setDeals] = useState(cached || staticDeals);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState(null);
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, setIsLive] = useState(!!cached);
 
   const processRawDeals = useCallback((rawDeals, companiesMap) => {
     return rawDeals.map(deal => {
@@ -121,6 +123,7 @@ export function useAttioDeals() {
 
       return {
         id: deal.id?.record_id,
+        dealName: dealName || 'Unknown Deal',  // Full series name e.g. "Series A - Thorizon"
         company: companyName,
         country,
         filterRegion,
@@ -133,7 +136,6 @@ export function useAttioDeals() {
         seen,
         status,
         industry: categories,
-        source: company && getAttrValue(company, 'strongest_connection_strength') ? 'Network' : 'Proactive',
         rating: feeling ? feeling * 2 : null,
         outcome,
         logoUrl: company ? getAttrValue(company, 'logo_url') : null,
@@ -150,7 +152,8 @@ export function useAttioDeals() {
 
     async function loadFromApi() {
       try {
-        setLoading(true);
+        // If we have cache, don't show loading — data is already on screen
+        if (!cached) setLoading(true);
 
         const rawDeals = await fetchAllDeals();
         if (cancelled) return;
@@ -177,12 +180,13 @@ export function useAttioDeals() {
           setDeals(processed);
           setIsLive(true);
           setError(null);
+          setCachedDeals(processed); // Cache for instant reloads
         }
       } catch (err) {
         if (!cancelled) {
-          console.warn('Failed to fetch live Attio data, using static fallback:', err.message);
+          console.warn('Failed to fetch live Attio data, using fallback:', err.message);
           setError(err.message);
-          setIsLive(false);
+          if (!cached) setIsLive(false);
         }
       } finally {
         if (!cancelled) setLoading(false);
