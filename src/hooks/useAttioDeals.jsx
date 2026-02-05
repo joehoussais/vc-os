@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllDeals, fetchCompaniesByIds, getAttrValue, getAttrValues, getLocationCountryCode, getCachedDeals, setCachedDeals } from '../services/attioApi';
+import { fetchAllDeals, fetchCompaniesByIds, fetchListEntries, getAttrValue, getAttrValues, getEntryValue, getLocationCountryCode, getCachedDeals, setCachedDeals } from '../services/attioApi';
 import { attioDeals as staticDeals } from '../data/attioData';
 
 // Country code to region mapping
@@ -60,11 +60,6 @@ function dateToQuarter(dateStr) {
   return `Q${quarter} ${date.getFullYear()}`;
 }
 
-function wasDealSeen(status) {
-  if (!status) return false;
-  return status === 'Announced deals we saw' || status === 'deal flow' || status === 'deal rumors';
-}
-
 export function useAttioDeals() {
   // Load from session cache immediately for instant page refreshes
   const cached = getCachedDeals();
@@ -73,8 +68,9 @@ export function useAttioDeals() {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(!!cached);
 
-  const processRawDeals = useCallback((rawDeals, companiesMap) => {
+  const processRawDeals = useCallback((rawDeals, companiesMap, coverageMap) => {
     return rawDeals.map(deal => {
+      const dealRecordId = deal.id?.record_id;
       const dealName = getAttrValue(deal, 'deal_id');       // "Series A - Thorizon"
       const status = getAttrValue(deal, 'status');           // "Announced deals we saw" (from status.title)
       const announcedDate = getAttrValue(deal, 'announced_date'); // "2025-03-12"
@@ -97,12 +93,13 @@ export function useAttioDeals() {
       const stageFromCompany = company ? fundingStatusToStage[getAttrValue(company, 'last_funding_status_46')] : null;
       const stage = stageFromDeal || stageFromCompany || 'Unknown';
 
-      // Amount
-      const amount = company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null;
-
-      // Seen / In Scope
-      const seen = wasDealSeen(status);
-      const inScope = !!company && !!announcedDate;
+      // Deal Coverage list data (in_scope, received, amount)
+      const coverage = coverageMap[dealRecordId];
+      const inScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
+      const seen = coverage ? !!getEntryValue(coverage, 'received') : false;
+      const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
+      const amount = coverageAmount != null ? Math.round(coverageAmount / 1000000) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
+      const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
       // Outcome
       const companyStatus = company ? getAttrValue(company, 'status_4') : null;
@@ -122,8 +119,8 @@ export function useAttioDeals() {
       const feeling = company ? getAttrValue(company, 'feeling') : null;
 
       return {
-        id: deal.id?.record_id,
-        dealName: dealName || 'Unknown Deal',  // Full series name e.g. "Series A - Thorizon"
+        id: dealRecordId,
+        dealName: dealName || 'Unknown Deal',
         company: companyName,
         country,
         filterRegion,
@@ -137,6 +134,7 @@ export function useAttioDeals() {
         status,
         industry: categories,
         rating: feeling ? feeling * 2 : null,
+        dealScore,
         outcome,
         logoUrl: company ? getAttrValue(company, 'logo_url') : null,
         description: company ? getAttrValue(company, 'description') : null,
@@ -155,8 +153,19 @@ export function useAttioDeals() {
         // If we have cache, don't show loading — data is already on screen
         if (!cached) setLoading(true);
 
-        const rawDeals = await fetchAllDeals();
+        // Fetch deals and list entries in parallel
+        const [rawDeals, listEntries] = await Promise.all([
+          fetchAllDeals(),
+          fetchListEntries(),
+        ]);
         if (cancelled) return;
+
+        // Build coverage map: deal record ID → list entry
+        const coverageMap = {};
+        for (const entry of listEntries) {
+          const dealId = entry.parent_record_id;
+          if (dealId) coverageMap[dealId] = entry;
+        }
 
         // Extract unique company IDs from deals
         const companyIds = [...new Set(
@@ -174,7 +183,7 @@ export function useAttioDeals() {
           companiesMap[c.id?.record_id] = c;
         }
 
-        const processed = processRawDeals(rawDeals, companiesMap);
+        const processed = processRawDeals(rawDeals, companiesMap, coverageMap);
 
         if (!cancelled && processed.length > 0) {
           setDeals(processed);

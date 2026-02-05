@@ -72,6 +72,36 @@ export async function fetchCompaniesByIds(companyIds) {
   return allRecords;
 }
 
+// Fetch all entries from the Deal Coverage list (has in_scope, received, amount)
+export async function fetchListEntries() {
+  let allEntries = [];
+  let offset = null;
+
+  do {
+    const payload = { limit: 100 };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/lists/deal_coverage_6/entries/query', payload);
+    allEntries = allEntries.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  return allEntries;
+}
+
+// Helper: extract a value from a list entry's entry_values
+export function getEntryValue(entry, slug) {
+  const attr = entry?.entry_values?.[slug];
+  if (!attr || !attr.length) return null;
+
+  const val = attr[0];
+  if (val.value !== undefined) return val.value;         // checkbox, text, number
+  if (val.currency_value !== undefined) return val.currency_value; // currency
+  if (val.status) return val.status.title;
+  if (val.option) return val.option.title;
+  return val;
+}
+
 // Session cache: save processed deals so page refreshes are instant
 export function getCachedDeals() {
   try {

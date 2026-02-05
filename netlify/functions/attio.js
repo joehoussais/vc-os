@@ -28,6 +28,7 @@ export default async (req) => {
     const allowedEndpoints = [
       '/objects/deals_2/records/query',
       '/objects/companies/records/query',
+      '/lists/deal_coverage_6/entries/query',
     ];
 
     if (!allowedEndpoints.includes(endpoint)) {
