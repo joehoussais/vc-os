@@ -1,24 +1,52 @@
 import { useState, useMemo } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
-import { Line, Pie } from 'react-chartjs-2';
-import { coverageTimeSeriesData, chartColors, calculateCoverageByCountry } from '../data/attioData';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { Line, Bar, Pie } from 'react-chartjs-2';
+import { chartColors, calculateCoverageByCountry } from '../data/attioData';
 import { useAttioDeals } from '../hooks/useAttioDeals';
 import { useTheme } from '../hooks/useTheme.jsx';
 import Modal from '../components/Modal';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend);
+
+// Helper to convert "Q1 2025" to a comparable number for sorting/filtering
+function quarterToNum(q) {
+  if (!q) return 0;
+  const match = q.match(/Q(\d)\s+(\d{4})/);
+  if (!match) return 0;
+  return parseInt(match[2]) * 4 + parseInt(match[1]);
+}
+
+// Format a date string like "2025-03-12" to "Mar 2025"
+function formatMonth(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
 
 export default function Sourcing({ dealState, setDealState, showToast }) {
+  const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
+  const { theme } = useTheme();
+
+  // Build sorted list of all available quarters from real data
+  const allQuarters = useMemo(() => {
+    const set = new Set();
+    attioDeals.forEach(d => { if (d.date) set.add(d.date); });
+    return [...set].sort((a, b) => quarterToNum(a) - quarterToNum(b));
+  }, [attioDeals]);
+
   const [filters, setFilters] = useState({
     country: 'all',
     stage: 'all',
-    from: 'Q1 2025',
-    to: 'Q4 2025',
+    from: '',
+    to: '',
     show: 'all'
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
-  const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
-  const { theme } = useTheme();
+
+  // Default from/to once quarters are available
+  const effectiveFrom = filters.from || allQuarters[0] || 'Q1 2024';
+  const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
 
   // Merge local state with Attio data
   const deals = useMemo(() => {
@@ -29,32 +57,43 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     }));
   }, [dealState, attioDeals]);
 
-  // Apply filters
+  // Apply filters including date range
   const filteredDeals = useMemo(() => {
+    const fromNum = quarterToNum(effectiveFrom);
+    const toNum = quarterToNum(effectiveTo);
     return deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (filters.show === 'in-scope' && !d.inScope) return false;
       if (filters.show === 'unseen' && (!d.inScope || d.seen)) return false;
+      if (d.date) {
+        const dNum = quarterToNum(d.date);
+        if (dNum < fromNum || dNum > toNum) return false;
+      }
       return true;
     }).sort((a, b) => {
-      // Sort by announced date descending
       return new Date(b.announcedDate) - new Date(a.announcedDate);
     });
-  }, [deals, filters]);
+  }, [deals, filters, effectiveFrom, effectiveTo]);
 
-  // Calculate coverage stats
+  // Calculate coverage stats (also respects date range)
   const stats = useMemo(() => {
+    const fromNum = quarterToNum(effectiveFrom);
+    const toNum = quarterToNum(effectiveTo);
     const filtered = deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
+      if (d.date) {
+        const dNum = quarterToNum(d.date);
+        if (dNum < fromNum || dNum > toNum) return false;
+      }
       return true;
     });
     const inScopeCount = filtered.filter(d => d.inScope).length;
     const seenCount = filtered.filter(d => d.inScope && d.seen).length;
     const coverage = inScopeCount > 0 ? Math.round((seenCount / inScopeCount) * 100) : 0;
     return { total: filtered.length, inScope: inScopeCount, seen: seenCount, coverage };
-  }, [deals, filters]);
+  }, [deals, filters, effectiveFrom, effectiveTo]);
 
   // Calculate coverage by country for pie chart
   const coverageByCountry = useMemo(() => calculateCoverageByCountry(deals), [deals]);
@@ -77,19 +116,49 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     showToast(`Updated ${field === 'inScope' ? 'scope' : 'seen'} status`);
   };
 
-  // Compute trailing 12-month (4-quarter) average
-  const trailing12mAvg = useMemo(() => {
-    const raw = coverageTimeSeriesData.data;
-    return raw.map((_, i) => {
-      if (i < 3) return null; // need at least 4 data points
-      const window = raw.slice(i - 3, i + 1);
+  // Compute per-quarter stats from real deal data
+  const quarterlyData = useMemo(() => {
+    // Group deals by quarter
+    const byQ = {};
+    deals.forEach(d => {
+      if (!d.date) return;
+      if (!byQ[d.date]) byQ[d.date] = { total: 0, inScope: 0, seen: 0 };
+      byQ[d.date].total++;
+      if (d.inScope) byQ[d.date].inScope++;
+      if (d.inScope && d.seen) byQ[d.date].seen++;
+    });
+
+    // Sort quarters chronologically
+    const sorted = Object.keys(byQ).sort((a, b) => quarterToNum(a) - quarterToNum(b));
+
+    // Filter to selected range
+    const fromNum = quarterToNum(effectiveFrom);
+    const toNum = quarterToNum(effectiveTo);
+    const filtered = sorted.filter(q => {
+      const n = quarterToNum(q);
+      return n >= fromNum && n <= toNum;
+    });
+
+    const labels = filtered;
+    const inScopeCounts = filtered.map(q => byQ[q].inScope);
+    const coverageRates = filtered.map(q =>
+      byQ[q].inScope > 0 ? Math.round((byQ[q].seen / byQ[q].inScope) * 100) : 0
+    );
+
+    // Trailing 4-quarter average on coverage
+    const trailing = coverageRates.map((_, i) => {
+      if (i < 3) return null;
+      const window = coverageRates.slice(i - 3, i + 1);
       return Math.round(window.reduce((a, b) => a + b, 0) / window.length);
     });
-  }, []);
 
-  const timeSeriesOptions = {
+    return { labels, inScopeCounts, coverageRates, trailing };
+  }, [deals, effectiveFrom, effectiveTo]);
+
+  const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
         display: true,
@@ -103,17 +172,33 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
           usePointStyle: false,
           padding: 16,
         }
+      },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            if (ctx.dataset.yAxisID === 'y') return `${ctx.dataset.label}: ${ctx.parsed.y}%`;
+            return `${ctx.dataset.label}: ${ctx.parsed.y}`;
+          }
+        }
       }
     },
     scales: {
       y: {
-        min: 50,
-        max: 105,
-        ticks: {
-          callback: v => v + '%',
-          color: 'var(--text-tertiary)'
-        },
-        grid: { color: 'var(--border-subtle)' }
+        type: 'linear',
+        position: 'left',
+        min: 0,
+        max: 100,
+        ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' },
+        grid: { color: 'var(--border-subtle)' },
+        title: { display: false },
+      },
+      y1: {
+        type: 'linear',
+        position: 'right',
+        min: 0,
+        ticks: { color: 'var(--text-tertiary)', precision: 0 },
+        grid: { drawOnChartArea: false },
+        title: { display: false },
       },
       x: {
         ticks: { color: 'var(--text-tertiary)' },
@@ -171,6 +256,18 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             ]}
           />
           <FilterSelect
+            label="From"
+            value={effectiveFrom}
+            onChange={(v) => setFilters({ ...filters, from: v })}
+            options={allQuarters.map(q => ({ value: q, label: q }))}
+          />
+          <FilterSelect
+            label="To"
+            value={effectiveTo}
+            onChange={(v) => setFilters({ ...filters, to: v })}
+            options={allQuarters.map(q => ({ value: q, label: q }))}
+          />
+          <FilterSelect
             label="Show"
             value={filters.show}
             onChange={(v) => setFilters({ ...filters, show: v })}
@@ -206,22 +303,35 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             </div>
           </div>
           <div className="h-72">
-            <Line
+            <Bar
               data={{
-                labels: coverageTimeSeriesData.labels,
+                labels: quarterlyData.labels,
                 datasets: [
                   {
+                    type: 'bar',
+                    label: 'In-scope deals',
+                    data: quarterlyData.inScopeCounts,
+                    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                    borderRadius: 3,
+                    yAxisID: 'y1',
+                    order: 2,
+                  },
+                  {
+                    type: 'line',
                     label: 'Coverage %',
-                    data: coverageTimeSeriesData.data,
+                    data: quarterlyData.coverageRates,
                     borderColor: chartColors.rrwRed,
                     backgroundColor: 'transparent',
                     tension: 0.3,
                     pointRadius: 3,
-                    pointBackgroundColor: chartColors.rrwRed
+                    pointBackgroundColor: chartColors.rrwRed,
+                    yAxisID: 'y',
+                    order: 0,
                   },
                   {
+                    type: 'line',
                     label: '12-mo trailing avg',
-                    data: trailing12mAvg,
+                    data: quarterlyData.trailing,
                     borderColor: theme === 'dark' ? '#c2c0b6' : '#141413',
                     backgroundColor: 'transparent',
                     borderDash: [6, 3],
@@ -229,10 +339,12 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                     tension: 0.3,
                     pointRadius: 0,
                     spanGaps: false,
-                  }
+                    yAxisID: 'y',
+                    order: 1,
+                  },
                 ]
               }}
-              options={timeSeriesOptions}
+              options={chartOptions}
             />
           </div>
         </div>
@@ -471,7 +583,7 @@ function DealRow({ deal, onToggle, onClick }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[11px]">
           {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>}
-          <span className="text-[var(--text-quaternary)]">{deal.date}</span>
+          <span className="text-[var(--text-quaternary)]">{formatMonth(deal.announcedDate) || deal.date}</span>
         </div>
         <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
           <Checkbox checked={deal.inScope} onChange={() => onToggle(deal.id, 'inScope')} label="Scope" />
