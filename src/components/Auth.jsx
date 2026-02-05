@@ -54,9 +54,8 @@ export function useAuth() {
 
   const login = () => {
     setError(null);
-    // Go directly to Google OAuth instead of showing the widget
-    const siteURL = window.location.origin;
-    window.location.href = `${siteURL}/.netlify/identity/authorize?provider=google`;
+    // Open the Netlify Identity widget - user clicks Google button there
+    netlifyIdentity.open('login');
   };
   const logout = () => netlifyIdentity.logout();
 
