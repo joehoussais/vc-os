@@ -44,9 +44,9 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  // Default from/to once quarters are available
-  const effectiveFrom = filters.from || allQuarters[0] || 'Q1 2024';
-  const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
+  // Default from/to: Q1 2024 → Q1 2026 (fund-relevant range)
+  const effectiveFrom = filters.from || 'Q1 2024';
+  const effectiveTo = filters.to || 'Q1 2026';
 
   // Merge local state with Attio data
   const deals = useMemo(() => {
