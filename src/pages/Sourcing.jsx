@@ -148,8 +148,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     // Trailing 4-quarter average on coverage
     const trailing = coverageRates.map((_, i) => {
       if (i < 3) return null;
-      const window = coverageRates.slice(i - 3, i + 1);
-      return Math.round(window.reduce((a, b) => a + b, 0) / window.length);
+      const slice = coverageRates.slice(i - 3, i + 1);
+      return Math.round(slice.reduce((a, b) => a + b, 0) / slice.length);
     });
 
     return { labels, inScopeCounts, coverageRates, trailing };
@@ -255,18 +255,22 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
               { value: 'Venture', label: 'Venture' },
             ]}
           />
-          <FilterSelect
-            label="From"
-            value={effectiveFrom}
-            onChange={(v) => setFilters({ ...filters, from: v })}
-            options={allQuarters.map(q => ({ value: q, label: q }))}
-          />
-          <FilterSelect
-            label="To"
-            value={effectiveTo}
-            onChange={(v) => setFilters({ ...filters, to: v })}
-            options={allQuarters.map(q => ({ value: q, label: q }))}
-          />
+          {allQuarters.length > 0 && (
+            <>
+              <FilterSelect
+                label="From"
+                value={effectiveFrom}
+                onChange={(v) => setFilters({ ...filters, from: v })}
+                options={allQuarters.map(q => ({ value: q, label: q }))}
+              />
+              <FilterSelect
+                label="To"
+                value={effectiveTo}
+                onChange={(v) => setFilters({ ...filters, to: v })}
+                options={allQuarters.map(q => ({ value: q, label: q }))}
+              />
+            </>
+          )}
           <FilterSelect
             label="Show"
             value={filters.show}
