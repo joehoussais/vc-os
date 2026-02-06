@@ -1,19 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS } from '../hooks/useAttioCompanies';
-
-const TEAM_MEMBERS = [
-  { id: '132dcc71-5c7a-41fa-a94c-aa9858d6cea3', name: 'Chloé' },
-  { id: '7acbe6c2-21e1-4346-bcff-0ce4797d6e88', name: 'Joseph' },
-  { id: '64d84369-bb20-4b9e-b313-69f423e24438', name: 'Alessandro' },
-  { id: '82cfb7fc-f667-467d-97db-f5459047eeb6', name: 'Olivier' },
-  { id: '93d8a2b8-e953-4c1d-bc62-2a57e5e8e481', name: 'Abel' },
-  { id: 'fae2196e-dfb6-4edb-a279-adf24b1e151e', name: 'Max' },
-  { id: '190fc1b3-2b0e-40b9-b1d3-3036ab9b936f', name: 'Thomas' },
-  { id: 'e330fcd0-65a3-42ac-9b25-b0035cd175d2', name: 'Antoine' },
-];
-
-const TEAM_MAP = {};
-TEAM_MEMBERS.forEach(m => { TEAM_MAP[m.id] = m.name; });
+import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 
 const STAGE_DEFINITIONS = {
   universe: 'All startups tracked in our CRM',
@@ -285,6 +272,29 @@ export default function DealFunnel() {
       avgGrowthScore,
     };
   }, [activeSource, funnelData]);
+
+  // By team member breakdown (for blended sidebar)
+  const ownerBreakdown = useMemo(() => {
+    const stageOrder = FUNNEL_STAGES.map(s => s.id);
+    const byOwner = {};
+
+    filtered.forEach(c => {
+      const owners = c.ownerIds.length > 0 ? c.ownerIds : ['unassigned'];
+      const idx = stageOrder.indexOf(c.funnelStage);
+
+      owners.forEach(oid => {
+        const name = TEAM_MAP[oid] || 'Unassigned';
+        if (!byOwner[name]) byOwner[name] = { count: 0, contacted: 0, met: 0, dealflow: 0 };
+        byOwner[name].count++;
+        if (idx >= stageOrder.indexOf('contacted')) byOwner[name].contacted++;
+        if (idx >= stageOrder.indexOf('met')) byOwner[name].met++;
+        if (idx >= stageOrder.indexOf('dealflow')) byOwner[name].dealflow++;
+      });
+    });
+
+    return Object.entries(byOwner)
+      .sort((a, b) => b[1].dealflow - a[1].dealflow || b[1].met - a[1].met);
+  }, [filtered]);
 
   const activeSourceInfo = activeSource
     ? SOURCE_CHANNELS.find(ch => ch.id === activeSource) : null;
@@ -647,19 +657,59 @@ export default function DealFunnel() {
           ) : (
             /* Blended sidebar */
             <>
-              <h3 className="font-semibold text-[var(--text-primary)] mb-4">Conversion Rates</h3>
-              <div className="space-y-0">
-                {funnelData.stages.slice(1).map((stage, i, arr) => {
-                  const prev = i === 0 ? funnelData.stages[0] : arr[i - 1];
-                  const rate = stage.conversionRate;
-                  const rateColor = rate >= 40 ? 'text-emerald-500' : rate >= 20 ? 'text-amber-500' : 'text-red-500';
+              {/* By team member */}
+              <h3 className="font-semibold text-[var(--text-primary)] mb-4">By Team Member</h3>
+              <div className="space-y-2 mb-6">
+                {ownerBreakdown.filter(([name]) => name !== 'Unassigned').map(([name, data]) => {
+                  const maxCount = Math.max(...ownerBreakdown.map(([, d]) => d.count));
                   return (
-                    <div key={stage.id || i} className="flex justify-between py-2.5 border-b border-[var(--border-subtle)] last:border-0">
-                      <span className="text-[12px] text-[var(--text-tertiary)]">{prev.name} → {stage.name}</span>
-                      <span className={`font-semibold text-[13px] ${rateColor}`}>{rate}%</span>
+                    <div key={name} className="text-[12px]">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[var(--text-secondary)] font-medium">{name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[var(--text-quaternary)]">{data.count} companies</span>
+                          <span className="font-semibold text-[var(--text-primary)]">
+                            {data.dealflow} in deal flow
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${maxCount > 0 ? (data.count / maxCount) * 100 : 0}%`,
+                              backgroundColor: 'var(--rrw-red)',
+                            }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-[var(--rrw-red)] font-medium w-16 text-right">
+                          {data.met} met
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
+                {ownerBreakdown.length === 0 && (
+                  <p className="text-[11px] text-[var(--text-quaternary)]">No company data</p>
+                )}
+              </div>
+
+              <div className="border-t border-[var(--border-default)] pt-4 mb-4">
+                <h4 className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Conversion Rates</h4>
+                <div className="space-y-0">
+                  {funnelData.stages.slice(1).map((stage, i, arr) => {
+                    const prev = i === 0 ? funnelData.stages[0] : arr[i - 1];
+                    const rate = stage.conversionRate;
+                    const rateColor = rate >= 40 ? 'text-emerald-500' : rate >= 20 ? 'text-amber-500' : 'text-red-500';
+                    return (
+                      <div key={stage.id || i} className="flex justify-between py-2.5 border-b border-[var(--border-subtle)] last:border-0">
+                        <span className="text-[12px] text-[var(--text-tertiary)]">{prev.name} → {stage.name}</span>
+                        <span className={`font-semibold text-[13px] ${rateColor}`}>{rate}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Source comparison */}

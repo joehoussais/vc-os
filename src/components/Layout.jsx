@@ -3,7 +3,7 @@ import { useTheme } from '../hooks/useTheme.jsx';
 const tabs = [
   { id: 'lp-pipeline', label: 'LP Pipeline' },
   { id: 'coverage', label: 'Coverage' },
-  { id: 'deal-funnel', label: 'Deal Funnel' },
+  { id: 'deal-funnel', label: 'Deal Flow Pipeline' },
   { id: 'deal-analysis', label: 'Deal Analysis' },
   { id: 'portfolio', label: 'Portfolio' },
 ];

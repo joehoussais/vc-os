@@ -172,23 +172,13 @@ export default function Sourcing() {
   const [updatingFields, setUpdatingFields] = useState(new Set());
   const [localOverrides, setLocalOverrides] = useState({});
 
-  // Merge optimistic overrides onto live data
+  // Merge optimistic overrides onto live data (only in_scope is toggleable)
   const deals = useMemo(() => {
     if (Object.keys(localOverrides).length === 0) return attioDeals;
     return attioDeals.map(d => {
-      const rKey = `${d.id}:received`;
       const sKey = `${d.id}:in_scope`;
-      if (!(rKey in localOverrides) && !(sKey in localOverrides)) return d;
-      const overrides = {};
-      if (rKey in localOverrides) {
-        overrides.coverageReceived = localOverrides[rKey];
-        overrides.seen = localOverrides[rKey] || d.seen;
-      }
-      if (sKey in localOverrides) {
-        overrides.coverageInScope = localOverrides[sKey];
-        overrides.inScope = localOverrides[sKey];
-      }
-      return { ...d, ...overrides };
+      if (!(sKey in localOverrides)) return d;
+      return { ...d, coverageInScope: localOverrides[sKey], inScope: localOverrides[sKey] };
     });
   }, [attioDeals, localOverrides]);
 
@@ -209,7 +199,6 @@ export default function Sourcing() {
     }
   }, [attioDeals]);
 
-  const handleToggleReceived = useCallback((dealId, newValue) => handleToggleField(dealId, 'received', newValue), [handleToggleField]);
   const handleToggleInScope = useCallback((dealId, newValue) => handleToggleField(dealId, 'in_scope', newValue), [handleToggleField]);
 
   // Build Granola call ratings map
@@ -442,7 +431,7 @@ export default function Sourcing() {
         </div>
       </div>
 
-      {subTab === 'overview' && <OverviewTab deals={deals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} monthlyChartData={monthlyChartData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} onToggleReceived={handleToggleReceived} onToggleInScope={handleToggleInScope} updatingFields={updatingFields} />}
+      {subTab === 'overview' && <OverviewTab deals={deals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} monthlyChartData={monthlyChartData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} onToggleInScope={handleToggleInScope} updatingFields={updatingFields} />}
       {subTab === 'shadow' && <ShadowPortfolioTab shadowPortfolio={shadowPortfolio} attioDeals={deals} setSelectedDeal={setSelectedDeal} />}
       {subTab === 'scorecard' && <ScorecardTab scorecard={scorecard} attioDeals={deals} shadowPortfolio={shadowPortfolio} />}
 
@@ -453,7 +442,7 @@ export default function Sourcing() {
 
 // ─── Overview Tab ─────────────────────────────────────────
 
-function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, monthlyChartData, chartOptions, pieOptions, theme, setSelectedDeal, onToggleReceived, onToggleInScope, updatingFields }) {
+function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, monthlyChartData, chartOptions, pieOptions, theme, setSelectedDeal, onToggleInScope, updatingFields }) {
   return (
     <>
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
@@ -493,7 +482,7 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-blue-500/40 inline-block" /> In Scope</span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
-            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleReceived={onToggleReceived} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
+            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
           </div>
         </div>
       </div>
@@ -977,25 +966,28 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-function DealRow({ deal, onClick, onToggleReceived, onToggleInScope, updatingFields }) {
+function DealRow({ deal, onClick, onToggleInScope, updatingFields }) {
   const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
   const outcomeStyle = OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
   const hasEntry = !!deal.coverageEntryId;
-  const isUpdatingR = updatingFields?.has(`${deal.id}:received`);
   const isUpdatingS = updatingFields?.has(`${deal.id}:in_scope`);
+
+  // Build seen tooltip showing which signals detected this deal
+  const seenSignals = [];
+  if (deal.hasEmailInteraction) seenSignals.push('Email');
+  if (deal.hasCalendarInteraction) seenSignals.push('Meeting');
+  if (deal.receivedDate) seenSignals.push('Received');
+  const seenTooltip = deal.seen
+    ? `Seen (${seenSignals.length > 0 ? seenSignals.join(', ') : 'Status signal'})`
+    : 'Not seen';
+
   return (
     <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] transition-colors">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Checkboxes: received + in_scope */}
-          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-            <span className="relative" title="Received (we saw this deal)">
-              <input type="checkbox" checked={deal.coverageReceived || false}
-                onChange={() => hasEntry && onToggleReceived?.(deal.id, !deal.coverageReceived)}
-                disabled={!hasEntry || isUpdatingR}
-                className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer disabled:opacity-40" />
-              {isUpdatingR && <span className="absolute -right-1.5 -top-1.5 w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin text-[var(--text-quaternary)]" />}
-            </span>
+          {/* Seen indicator (auto-detected) + In Scope checkbox (manual) */}
+          <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${deal.seen ? 'bg-emerald-500' : 'bg-[var(--border-subtle)]'}`} title={seenTooltip} />
             <span className="relative" title="In Scope (fits our thesis)">
               <input type="checkbox" checked={deal.coverageInScope || false}
                 onChange={() => hasEntry && onToggleInScope?.(deal.id, !deal.coverageInScope)}
