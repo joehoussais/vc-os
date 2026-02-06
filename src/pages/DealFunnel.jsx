@@ -298,10 +298,10 @@ export default function DealFunnel() {
                   return (
                     <div key={stage.id}>
                       {index > 0 && (
-                        <div className="flex items-center justify-center gap-3 py-1.5 text-[var(--text-quaternary)] text-[11px]">
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
-                          <span className="font-medium">{stage.conversionRate}%</span>
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
+                        <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                          <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                         </div>
                       )}
                       <div
@@ -348,10 +348,10 @@ export default function DealFunnel() {
 
                     return (
                       <div key={stage.id}>
-                        <div className="flex items-center justify-center gap-3 py-1.5 text-[var(--text-quaternary)] text-[11px]">
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
-                          <span className="font-medium">{stage.conversionRate}%</span>
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
+                        <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                          <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                         </div>
 
                         <div className="mx-auto mb-1" style={{ width: `${width}%` }}>
@@ -412,10 +412,10 @@ export default function DealFunnel() {
                   return (
                     <div key={stage.id}>
                       {index > 0 && (
-                        <div className="flex items-center justify-center gap-3 py-1.5 text-[var(--text-quaternary)] text-[11px]">
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
-                          <span className="font-medium">{stage.conversionRate}%</span>
-                          <div className="h-px bg-[var(--border-default)] flex-1 max-w-[50px]" />
+                        <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                          <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
+                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                         </div>
                       )}
 
