@@ -4,11 +4,11 @@ const API_PATH = '/api/attio';
 const CACHE_KEY = 'attio-deals-cache';
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-async function attioQuery(endpoint, payload = {}) {
+async function attioQuery(endpoint, payload = {}, method = 'POST') {
   const res = await fetch(API_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint, payload }),
+    body: JSON.stringify({ endpoint, payload, method }),
   });
 
   if (!res.ok) {
@@ -94,6 +94,23 @@ export async function fetchAllCompanies() {
   return allRecords;
 }
 
+// Fetch all LP records with pagination
+export async function fetchAllLPs() {
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = { limit: 100 };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/lp/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  return allRecords;
+}
+
 // Fetch all entries from the Deal Coverage list (has in_scope, received, amount)
 export async function fetchListEntries() {
   let allEntries = [];
@@ -109,6 +126,13 @@ export async function fetchListEntries() {
   } while (offset);
 
   return allEntries;
+}
+
+// Update a single field on a coverage list entry (for toggling received/in_scope)
+export async function updateListEntry(entryId, fieldSlug, value) {
+  return attioQuery(`/lists/deal_coverage_6/entries/${entryId}`, {
+    entry_values: { [fieldSlug]: [{ value }] },
+  }, 'PUT');
 }
 
 // Helper: extract a value from a list entry's entry_values

@@ -22,25 +22,44 @@ export default async (req) => {
 
   try {
     const body = await req.json();
-    const { endpoint, payload } = body;
+    const { endpoint, payload, method } = body;
+    const httpMethod = method || 'POST';
 
     // Whitelist allowed endpoints to prevent abuse
-    const allowedEndpoints = [
+    const allowedReadEndpoints = [
       '/objects/deals_2/records/query',
       '/objects/companies/records/query',
+      '/objects/lp/records/query',
       '/lists/deal_coverage_6/entries/query',
       '/objects/people/records/query',
     ];
 
-    if (!allowedEndpoints.includes(endpoint)) {
-      return new Response(JSON.stringify({ error: 'Endpoint not allowed' }), {
-        status: 403,
+    // Write endpoints use regex: only allow updating deal_coverage_6 entries
+    const writePattern = /^\/lists\/deal_coverage_6\/entries\/[a-f0-9-]{36}$/;
+
+    if (httpMethod === 'POST') {
+      if (!allowedReadEndpoints.includes(endpoint)) {
+        return new Response(JSON.stringify({ error: 'Endpoint not allowed' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else if (httpMethod === 'PUT' || httpMethod === 'PATCH') {
+      if (!writePattern.test(endpoint)) {
+        return new Response(JSON.stringify({ error: 'Write endpoint not allowed' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+        status: 405,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
     const response = await fetch(`${ATTIO_API_BASE}${endpoint}`, {
-      method: 'POST',
+      method: httpMethod,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',

@@ -108,6 +108,7 @@ export function useAttioDeals() {
 
       // Coverage list data — the source of truth for in_scope and received (seen)
       const coverage = coverageMap[dealRecordId];
+      const coverageEntryId = coverage?.entry_id || null;
       const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
       const coverageReceived = coverage ? !!getEntryValue(coverage, 'received') : false;
 
@@ -166,6 +167,9 @@ export function useAttioDeals() {
 
       return {
         id: dealRecordId,
+        coverageEntryId,
+        coverageReceived,
+        coverageInScope,
         dealName: dealName || 'Unknown Deal',
         company: companyName,
         country,

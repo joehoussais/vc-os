@@ -1,13 +1,14 @@
-import { useState, useMemo } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { useState, useMemo, useCallback } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import { chartColors } from '../data/attioData';
 import { useAttioDeals } from '../hooks/useAttioDeals';
+import { updateListEntry } from '../services/attioApi';
 import { useTheme } from '../hooks/useTheme.jsx';
 import { granolaMeetings } from '../data/mockData';
 import Modal from '../components/Modal';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend);
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -46,6 +47,29 @@ function monthsAgo(dateStr) {
   if (isNaN(d.getTime())) return null;
   const now = new Date();
   return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+}
+
+function dateToMonthKey(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthKeyToLabel(key) {
+  const [year, month] = key.split('-');
+  const d = new Date(parseInt(year), parseInt(month) - 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function monthKeyToQuarterKey(key) {
+  const [year, month] = key.split('-');
+  return `Q${Math.ceil(parseInt(month) / 3)} ${year}`;
+}
+
+function monthKeyToNum(key) {
+  const [year, month] = key.split('-');
+  return parseInt(year) * 12 + parseInt(month);
 }
 
 // ─── Constants ────────────────────────────────────────────
@@ -144,6 +168,50 @@ export default function Sourcing() {
   const { theme } = useTheme();
   const [subTab, setSubTab] = useState('overview');
 
+  // Optimistic update state for checkbox write-back
+  const [updatingFields, setUpdatingFields] = useState(new Set());
+  const [localOverrides, setLocalOverrides] = useState({});
+
+  // Merge optimistic overrides onto live data
+  const deals = useMemo(() => {
+    if (Object.keys(localOverrides).length === 0) return attioDeals;
+    return attioDeals.map(d => {
+      const rKey = `${d.id}:received`;
+      const sKey = `${d.id}:in_scope`;
+      if (!(rKey in localOverrides) && !(sKey in localOverrides)) return d;
+      const overrides = {};
+      if (rKey in localOverrides) {
+        overrides.coverageReceived = localOverrides[rKey];
+        overrides.seen = localOverrides[rKey] || d.seen;
+      }
+      if (sKey in localOverrides) {
+        overrides.coverageInScope = localOverrides[sKey];
+        overrides.inScope = localOverrides[sKey];
+      }
+      return { ...d, ...overrides };
+    });
+  }, [attioDeals, localOverrides]);
+
+  // Toggle a coverage field and write to Attio
+  const handleToggleField = useCallback(async (dealId, field, newValue) => {
+    const deal = attioDeals.find(d => d.id === dealId);
+    if (!deal?.coverageEntryId) return;
+    const fieldKey = `${dealId}:${field}`;
+    setLocalOverrides(prev => ({ ...prev, [fieldKey]: newValue }));
+    setUpdatingFields(prev => new Set(prev).add(fieldKey));
+    try {
+      await updateListEntry(deal.coverageEntryId, field, newValue);
+    } catch (err) {
+      console.error(`Failed to update ${field} for ${dealId}:`, err);
+      setLocalOverrides(prev => { const next = { ...prev }; delete next[fieldKey]; return next; });
+    } finally {
+      setUpdatingFields(prev => { const next = new Set(prev); next.delete(fieldKey); return next; });
+    }
+  }, [attioDeals]);
+
+  const handleToggleReceived = useCallback((dealId, newValue) => handleToggleField(dealId, 'received', newValue), [handleToggleField]);
+  const handleToggleInScope = useCallback((dealId, newValue) => handleToggleField(dealId, 'in_scope', newValue), [handleToggleField]);
+
   // Build Granola call ratings map
   const storedRatings = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('meetingRatings') || '{}'); }
@@ -166,27 +234,26 @@ export default function Sourcing() {
   const [filters, setFilters] = useState({ country: 'all', stage: 'all', from: '', to: '', show: 'all' });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  const effectiveFrom = filters.from || 'Q1 2020';
+  const effectiveFrom = filters.from || 'Q1 2023';
   const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
 
   const filteredDeals = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    return attioDeals.filter(d => {
+    return deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (filters.show === 'seen' && !d.seen) return false;
       if (filters.show === 'missed' && d.seen) return false;
-      // Include deals without dates, filter by quarter only if deal has one
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
     }).sort((a, b) => new Date(b.announcedDate || 0) - new Date(a.announcedDate || 0));
-  }, [attioDeals, filters, effectiveFrom, effectiveTo]);
+  }, [deals, filters, effectiveFrom, effectiveTo]);
 
   const stats = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    const filtered = attioDeals.filter(d => {
+    const filtered = deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
@@ -195,49 +262,77 @@ export default function Sourcing() {
     const seenCount = filtered.filter(d => d.seen).length;
     const coverage = filtered.length > 0 ? Math.round((seenCount / filtered.length) * 100) : 0;
     return { total: filtered.length, seen: seenCount, coverage };
-  }, [attioDeals, filters, effectiveFrom, effectiveTo]);
+  }, [deals, filters, effectiveFrom, effectiveTo]);
 
-  const coverageByRegion = useMemo(() => calculateCoverageByRegion(attioDeals), [attioDeals]);
+  const coverageByRegion = useMemo(() => calculateCoverageByRegion(deals), [deals]);
 
   const pieData = useMemo(() => {
     const stageData = {};
     const outcomeData = {};
-    attioDeals.forEach(d => {
+    deals.forEach(d => {
       stageData[d.stage] = (stageData[d.stage] || 0) + 1;
       outcomeData[d.outcome] = (outcomeData[d.outcome] || 0) + 1;
     });
     return { stageData, outcomeData };
-  }, [attioDeals]);
+  }, [deals]);
 
-  const quarterlyData = useMemo(() => {
-    const byQ = {};
-    attioDeals.forEach(d => {
-      if (!d.date) return;
-      if (!byQ[d.date]) byQ[d.date] = { total: 0, seen: 0 };
-      byQ[d.date].total++;
-      if (d.seen) byQ[d.date].seen++;
+  // Generate all months from Jan 2023 → now
+  const allMonths = useMemo(() => {
+    const months = [];
+    const now = new Date();
+    for (let y = 2023; y <= now.getFullYear(); y++) {
+      const maxM = y === now.getFullYear() ? now.getMonth() + 1 : 12;
+      for (let m = (y === 2023 ? 1 : 1); m <= maxM; m++) {
+        months.push(`${y}-${String(m).padStart(2, '0')}`);
+      }
+    }
+    return months;
+  }, []);
+
+  const monthlyChartData = useMemo(() => {
+    const byMonth = {};
+    deals.forEach(d => {
+      const mk = dateToMonthKey(d.announcedDate);
+      if (!mk) return;
+      if (!byMonth[mk]) byMonth[mk] = { total: 0, seen: 0 };
+      byMonth[mk].total++;
+      if (d.seen) byMonth[mk].seen++;
     });
+    // Quarterly aggregates for the coverage band
+    const byQuarter = {};
+    deals.forEach(d => {
+      if (!d.date) return;
+      if (!byQuarter[d.date]) byQuarter[d.date] = { total: 0, seen: 0 };
+      byQuarter[d.date].total++;
+      if (d.seen) byQuarter[d.date].seen++;
+    });
+    // Filter months within the selected quarter range
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    const filtered = allQuarters.filter(q => { const n = quarterToNum(q); return n >= fromNum && n <= toNum; });
-    const labels = filtered;
-    const dealCounts = filtered.map(q => (byQ[q]?.total || 0));
-    const coverageRates = filtered.map(q => byQ[q]?.total > 0 ? Math.round((byQ[q].seen / byQ[q].total) * 100) : 0);
-    const trailing = coverageRates.map((_, i) => {
-      if (i < 3) return null;
-      const slice = coverageRates.slice(i - 3, i + 1);
-      return Math.round(slice.reduce((a, b) => a + b, 0) / slice.length);
+    const displayMonths = allMonths.filter(mk => {
+      const qk = monthKeyToQuarterKey(mk);
+      const qn = quarterToNum(qk);
+      return qn >= fromNum && qn <= toNum;
     });
-    return { labels, dealCounts, coverageRates, trailing };
-  }, [attioDeals, effectiveFrom, effectiveTo, allQuarters]);
+    const labels = displayMonths.map(monthKeyToLabel);
+    const dealCounts = displayMonths.map(mk => byMonth[mk]?.total || 0);
+    const monthlyCoverage = displayMonths.map(mk =>
+      byMonth[mk]?.total > 0 ? Math.round((byMonth[mk].seen / byMonth[mk].total) * 100) : null
+    );
+    const quarterlyCoverage = displayMonths.map(mk => {
+      const qk = monthKeyToQuarterKey(mk);
+      return byQuarter[qk]?.total > 0 ? Math.round((byQuarter[qk].seen / byQuarter[qk].total) * 100) : null;
+    });
+    return { labels, dealCounts, monthlyCoverage, quarterlyCoverage };
+  }, [deals, effectiveFrom, effectiveTo, allMonths]);
 
   // ─── Shadow Portfolio — ONLY deals we saw, analysed, and passed on ──
   // This is NOT about deals we missed. Those belong in Coverage.
   // Shadow = we had a thesis, we made a prediction, we said no.
   // Now the market tells us if we were right.
   const shadowPortfolio = useMemo(() => {
-    return attioDeals
-      .filter(d => d.outcome === 'Passed') // Only passed — we actively decided "no"
+    return deals
+      .filter(d => d.outcome === 'Passed')
       .map(d => {
         const companyKey = (d.company || '').toLowerCase().trim();
         const callData = callRatingsMap[companyKey];
@@ -246,42 +341,41 @@ export default function Sourcing() {
           marketScore: computeMarketScore(d),
           ourCallRating: callData?.avgRating || d.rating || null,
           callCount: callData?.meetings?.length || 0,
-          // Use Attio's reasons_to_decline if available, fall back to status label
           passReason: d.reasonsToDecline || PASS_REASONS[d.status] || 'Reviewed and passed',
           timeAgo: monthsAgo(d.announcedDate),
         };
       })
       .sort((a, b) => b.marketScore - a.marketScore);
-  }, [attioDeals, callRatingsMap]);
+  }, [deals, callRatingsMap]);
 
   // ─── Scorecard data ────────────────────────────────────
   const scorecard = useMemo(() => {
-    const total = attioDeals.length;
+    const total = deals.length;
     if (total === 0) return null;
 
-    const seen = attioDeals.filter(d => d.seen).length;
-    const passed = attioDeals.filter(d => d.outcome === 'Passed').length;
-    const missed = attioDeals.filter(d => d.outcome === 'Missed').length;
-    const invested = attioDeals.filter(d => d.outcome === 'Invested').length;
-    const ic = attioDeals.filter(d => d.outcome === 'IC').length;
-    const dd = attioDeals.filter(d => d.outcome === 'DD').length;
+    const seen = deals.filter(d => d.seen).length;
+    const passed = deals.filter(d => d.outcome === 'Passed').length;
+    const missed = deals.filter(d => d.outcome === 'Missed').length;
+    const invested = deals.filter(d => d.outcome === 'Invested').length;
+    const ic = deals.filter(d => d.outcome === 'IC').length;
+    const dd = deals.filter(d => d.outcome === 'DD').length;
 
     const seenToDD = seen > 0 ? Math.round((dd + ic + invested) / seen * 100) : 0;
     const ddToIC = (dd + ic + invested) > 0 ? Math.round((ic + invested) / (dd + ic + invested) * 100) : 0;
     const icToInvested = (ic + invested) > 0 ? Math.round(invested / (ic + invested) * 100) : 0;
     const passRate = seen > 0 ? Math.round(passed / seen * 100) : 0;
 
-    const highConvictionMisses = attioDeals.filter(d => (d.outcome === 'Passed' || d.outcome === 'Missed') && d.rating >= 6);
+    const highConvictionMisses = deals.filter(d => (d.outcome === 'Passed' || d.outcome === 'Missed') && d.rating >= 6);
 
     const passedByRegion = {};
     const passedByStage = {};
-    attioDeals.filter(d => d.outcome === 'Passed' || d.outcome === 'Missed').forEach(d => {
+    deals.filter(d => d.outcome === 'Passed' || d.outcome === 'Missed').forEach(d => {
       passedByRegion[d.filterRegion] = (passedByRegion[d.filterRegion] || 0) + 1;
       passedByStage[d.stage] = (passedByStage[d.stage] || 0) + 1;
     });
 
     const ratingByOutcome = {};
-    attioDeals.filter(d => d.rating).forEach(d => {
+    deals.filter(d => d.rating).forEach(d => {
       if (!ratingByOutcome[d.outcome]) ratingByOutcome[d.outcome] = { sum: 0, count: 0 };
       ratingByOutcome[d.outcome].sum += d.rating;
       ratingByOutcome[d.outcome].count++;
@@ -291,7 +385,7 @@ export default function Sourcing() {
       avgRatingByOutcome[outcome] = (sum / count).toFixed(1);
     }
 
-    const ratedDeals = attioDeals.filter(d => d.rating);
+    const ratedDeals = deals.filter(d => d.rating);
     const highRatedGoodOutcome = ratedDeals.filter(d => d.rating >= 6 && (d.outcome === 'Invested' || d.outcome === 'IC' || d.outcome === 'DD')).length;
     const highRatedTotal = ratedDeals.filter(d => d.rating >= 6).length;
     const judgmentAccuracy = highRatedTotal > 0 ? Math.round(highRatedGoodOutcome / highRatedTotal * 100) : null;
@@ -304,7 +398,7 @@ export default function Sourcing() {
       avgRatingByOutcome,
       judgmentAccuracy,
     };
-  }, [attioDeals]);
+  }, [deals]);
 
   const chartOptions = {
     responsive: true, maintainAspectRatio: false,
@@ -316,7 +410,7 @@ export default function Sourcing() {
     scales: {
       y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } },
       y1: { type: 'linear', position: 'right', min: 0, ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { drawOnChartArea: false } },
-      x: { ticks: { color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } }
+      x: { ticks: { color: 'var(--text-tertiary)', maxRotation: 45, maxTicksLimit: 18 }, grid: { color: 'var(--border-subtle)' } }
     }
   };
 
@@ -348,18 +442,18 @@ export default function Sourcing() {
         </div>
       </div>
 
-      {subTab === 'overview' && <OverviewTab attioDeals={attioDeals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} quarterlyData={quarterlyData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} />}
-      {subTab === 'shadow' && <ShadowPortfolioTab shadowPortfolio={shadowPortfolio} attioDeals={attioDeals} setSelectedDeal={setSelectedDeal} />}
-      {subTab === 'scorecard' && <ScorecardTab scorecard={scorecard} attioDeals={attioDeals} shadowPortfolio={shadowPortfolio} />}
+      {subTab === 'overview' && <OverviewTab deals={deals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} monthlyChartData={monthlyChartData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} onToggleReceived={handleToggleReceived} onToggleInScope={handleToggleInScope} updatingFields={updatingFields} />}
+      {subTab === 'shadow' && <ShadowPortfolioTab shadowPortfolio={shadowPortfolio} attioDeals={deals} setSelectedDeal={setSelectedDeal} />}
+      {subTab === 'scorecard' && <ScorecardTab scorecard={scorecard} attioDeals={deals} shadowPortfolio={shadowPortfolio} />}
 
       <DealModal deal={selectedDeal} onClose={() => setSelectedDeal(null)} />
     </div>
   );
 }
 
-// ─── Overview Tab (unchanged) ─────────────────────────────
+// ─── Overview Tab ─────────────────────────────────────────
 
-function OverviewTab({ attioDeals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, quarterlyData, chartOptions, pieOptions, theme, setSelectedDeal }) {
+function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, monthlyChartData, chartOptions, pieOptions, theme, setSelectedDeal, onToggleReceived, onToggleInScope, updatingFields }) {
   return (
     <>
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
@@ -379,23 +473,27 @@ function OverviewTab({ attioDeals, filteredDeals, filters, setFilters, effective
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
-            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">Historical coverage over time</p></div>
+            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">Monthly deals · quarterly coverage band</p></div>
             <div className="text-right"><span className="text-3xl font-bold text-[var(--rrw-red)]">{stats.coverage}%</span><span className="text-xs text-[var(--text-tertiary)] block">Current</span></div>
           </div>
           <div className="h-72">
-            <Bar data={{ labels: quarterlyData.labels, datasets: [
-              { type: 'bar', label: 'Deals tracked', data: quarterlyData.dealCounts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 3, yAxisID: 'y1', order: 2 },
-              { type: 'line', label: 'Coverage %', data: quarterlyData.coverageRates, borderColor: chartColors.rrwRed, backgroundColor: 'transparent', tension: 0.3, pointRadius: 3, pointBackgroundColor: chartColors.rrwRed, yAxisID: 'y', order: 0 },
-              { type: 'line', label: '12-mo trailing avg', data: quarterlyData.trailing, borderColor: theme === 'dark' ? '#c2c0b6' : '#141413', backgroundColor: 'transparent', borderDash: [6, 3], borderWidth: 1.5, tension: 0.3, pointRadius: 0, spanGaps: false, yAxisID: 'y', order: 1 },
+            <Bar data={{ labels: monthlyChartData.labels, datasets: [
+              { type: 'line', label: 'Quarterly coverage %', data: monthlyChartData.quarterlyCoverage, borderColor: 'rgba(230, 52, 36, 0.3)', backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0, pointRadius: 0, borderWidth: 1, spanGaps: true, yAxisID: 'y', order: 3 },
+              { type: 'bar', label: 'Deals tracked', data: monthlyChartData.dealCounts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 3, yAxisID: 'y1', order: 2 },
+              { type: 'line', label: 'Monthly coverage %', data: monthlyChartData.monthlyCoverage, borderColor: chartColors.rrwRed, backgroundColor: 'transparent', tension: 0.3, pointRadius: 2, pointBackgroundColor: chartColors.rrwRed, spanGaps: false, yAxisID: 'y', order: 0 },
             ]}} options={chartOptions} />
           </div>
         </div>
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div><h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3><p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals</p></div>
           </div>
+          <div className="flex items-center gap-3 text-[10px] text-[var(--text-quaternary)] mb-2 px-3">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-emerald-500/40 inline-block" /> Received</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-blue-500/40 inline-block" /> In Scope</span>
+          </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
-            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} />)}
+            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleReceived={onToggleReceived} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
           </div>
         </div>
       </div>
@@ -425,7 +523,7 @@ function OverviewTab({ attioDeals, filteredDeals, filters, setFilters, effective
             <div key={outcome} className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
               <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>{outcome}</span>
               <div className="text-xl font-bold text-[var(--text-primary)]">{count}</div>
-              <div className="text-[11px] text-[var(--text-quaternary)]">{attioDeals.length > 0 ? Math.round((count / attioDeals.length) * 100) : 0}%</div>
+              <div className="text-[11px] text-[var(--text-quaternary)]">{deals.length > 0 ? Math.round((count / deals.length) * 100) : 0}%</div>
             </div>
           ))}
         </div>
@@ -879,26 +977,45 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-function DealRow({ deal, onClick }) {
+function DealRow({ deal, onClick, onToggleReceived, onToggleInScope, updatingFields }) {
   const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
   const outcomeStyle = OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
+  const hasEntry = !!deal.coverageEntryId;
+  const isUpdatingR = updatingFields?.has(`${deal.id}:received`);
+  const isUpdatingS = updatingFields?.has(`${deal.id}:in_scope`);
   return (
-    <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors" onClick={onClick}>
+    <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] transition-colors">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
+          {/* Checkboxes: received + in_scope */}
+          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+            <span className="relative" title="Received (we saw this deal)">
+              <input type="checkbox" checked={deal.coverageReceived || false}
+                onChange={() => hasEntry && onToggleReceived?.(deal.id, !deal.coverageReceived)}
+                disabled={!hasEntry || isUpdatingR}
+                className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer disabled:opacity-40" />
+              {isUpdatingR && <span className="absolute -right-1.5 -top-1.5 w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin text-[var(--text-quaternary)]" />}
+            </span>
+            <span className="relative" title="In Scope (fits our thesis)">
+              <input type="checkbox" checked={deal.coverageInScope || false}
+                onChange={() => hasEntry && onToggleInScope?.(deal.id, !deal.coverageInScope)}
+                disabled={!hasEntry || isUpdatingS}
+                className="w-3.5 h-3.5 accent-blue-500 cursor-pointer disabled:opacity-40" />
+              {isUpdatingS && <span className="absolute -right-1.5 -top-1.5 w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin text-[var(--text-quaternary)]" />}
+            </span>
+          </div>
           {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />}
-          <span className="font-medium text-[var(--text-primary)] truncate">{deal.dealName || deal.company}</span>
+          <span className="font-medium text-[var(--text-primary)] truncate cursor-pointer" onClick={onClick}>{deal.dealName || deal.company}</span>
           <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country}</span>
         </div>
         <span className={`text-[11px] px-2 py-0.5 rounded font-medium shrink-0 ${outcomeStyle}`}>{deal.outcome}</span>
       </div>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex items-center gap-2 text-[11px] pl-[52px]">
           {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>}
           <span className="text-[var(--text-quaternary)]">{formatMonth(deal.announcedDate) || deal.date}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`text-[11px] px-1.5 py-0.5 rounded ${deal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-400'}`}>{deal.seen ? 'Seen' : 'Missed'}</span>
           <span className={`font-semibold text-[13px] ${ratingColor} min-w-[36px] text-right`}>{deal.rating ? deal.rating + '/10' : '—'}</span>
         </div>
       </div>
