@@ -246,6 +246,18 @@ export default function DealFunnel() {
             onChange={(v) => setFilters({ ...filters, region: v })}
             options={regions.map(r => ({ value: r, label: r === 'all' ? 'All Regions' : r }))}
           />
+          <FilterSelect
+            label="Source"
+            value={activeSource || 'all'}
+            onChange={(v) => { setActiveSource(v === 'all' ? null : v); setSelectedStage(null); }}
+            options={[
+              { value: 'all', label: 'All Sources' },
+              ...SOURCE_CHANNELS.filter(ch => ch.id !== 'unknown').map(ch => ({
+                value: ch.id,
+                label: ch.name,
+              })),
+            ]}
+          />
           <div className="ml-auto text-right">
             <span className="text-xs text-[var(--text-tertiary)] block">Overall conversion</span>
             <span className="text-2xl font-bold text-[var(--rrw-red)]">{funnelData.overallConversion}%</span>
