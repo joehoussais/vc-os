@@ -43,7 +43,7 @@ function formatCurrencyFull(amount, currency) {
 export default function LPPipeline() {
   const { lps, loading, isLive } = useAttioLPs();
 
-  const [selectedFund, setSelectedFund] = useState('fund3');
+  const [selectedFund, setSelectedFund] = useState('commit');
   const [selectedOwner, setSelectedOwner] = useState('all');
   const [selectedStage, setSelectedStage] = useState(null);
   const [selectedType, setSelectedType] = useState('all');
