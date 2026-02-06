@@ -64,7 +64,7 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, user
               className="h-6 w-auto"
             />
             <div className="hidden md:block h-4 w-px bg-[var(--border-default)]" />
-            <span className="hidden md:block text-[13px] text-[var(--text-tertiary)]">
+            <span className="hidden md:block text-[13px] font-semibold tracking-wide uppercase text-[var(--text-tertiary)]">
               VC Operating System
             </span>
           </div>
@@ -103,8 +103,8 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, user
                 className={`
                   relative h-10 px-3 text-[13px] transition-all duration-150 rounded-md
                   ${activeTab === tab.id
-                    ? 'text-[var(--text-primary)] font-medium'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                    ? 'text-[var(--text-primary)] font-semibold'
+                    : 'text-[var(--text-tertiary)] font-medium hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
                   }
                 `}
               >
