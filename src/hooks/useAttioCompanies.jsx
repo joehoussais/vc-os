@@ -156,6 +156,32 @@ export function useAttioCompanies() {
       const rawSource = getAttrValue(company, 'source');
       const source = rawSource ? (SOURCE_VALUE_MAP[rawSource] || 'unknown') : 'unknown';
 
+      // Interaction data (auto-tracked by Attio from email/calendar sync)
+      const firstEmailInteraction = getAttrValue(company, 'first_email_interaction');
+      const lastEmailInteraction = getAttrValue(company, 'last_email_interaction');
+      const firstCalendarInteraction = getAttrValue(company, 'first_calendar_interaction');
+      const lastCalendarInteraction = getAttrValue(company, 'last_calendar_interaction');
+      const firstInteraction = getAttrValue(company, 'first_interaction');
+      const lastInteraction = getAttrValue(company, 'last_interaction');
+
+      // Connection strength
+      const connectionStrength = getAttrValue(company, 'strongest_connection_strength');
+
+      // Intro path (people who introduced this company)
+      const introPathAttr = company?.values?.intro_path;
+      const introPathCount = introPathAttr?.length || 0;
+
+      // Notes
+      const notes = getAttrValue(company, 'notes');
+
+      // Funding info
+      const lastFundingStatus = getAttrValue(company, 'last_funding_status_46');
+      const estimatedArr = getAttrValue(company, 'estimated_arr_usd');
+      const employeeRange = getAttrValue(company, 'employee_range');
+
+      // Domains (for linking to deals)
+      const domain = company?.values?.domains?.[0]?.domain || null;
+
       return {
         id: recordId,
         name,
@@ -173,6 +199,21 @@ export function useAttioCompanies() {
         industry,
         feeling,
         description: getAttrValue(company, 'description'),
+        // Interaction data
+        firstEmailInteraction,
+        lastEmailInteraction,
+        firstCalendarInteraction,
+        lastCalendarInteraction,
+        firstInteraction,
+        lastInteraction,
+        connectionStrength,
+        introPathCount,
+        notes,
+        // Business data
+        lastFundingStatus,
+        estimatedArr,
+        employeeRange,
+        domain,
       };
     });
   }, []);
