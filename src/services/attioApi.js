@@ -94,6 +94,26 @@ export async function fetchAllCompanies() {
   return allRecords;
 }
 
+// Fetch all companies with an owner set (sourcing universe ~2000+)
+export async function fetchOwnedCompanies() {
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = {
+      filter: { "owner": { "$not_empty": true } },
+      limit: 100,
+    };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/companies/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  return allRecords;
+}
+
 // Fetch all LP records with pagination
 export async function fetchAllLPs() {
   let allRecords = [];
@@ -168,6 +188,35 @@ export function setCachedDeals(deals) {
   try {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify({
       data: deals,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // sessionStorage full or unavailable — ignore
+  }
+}
+
+// Coverage-specific session cache (separate from deals cache)
+const COVERAGE_CACHE_KEY = 'attio-coverage-cache';
+
+export function getCachedCoverage() {
+  try {
+    const raw = sessionStorage.getItem(COVERAGE_CACHE_KEY);
+    if (!raw) return null;
+    const { data, timestamp } = JSON.parse(raw);
+    if (Date.now() - timestamp > CACHE_TTL) {
+      sessionStorage.removeItem(COVERAGE_CACHE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedCoverage(data) {
+  try {
+    sessionStorage.setItem(COVERAGE_CACHE_KEY, JSON.stringify({
+      data,
       timestamp: Date.now(),
     }));
   } catch {

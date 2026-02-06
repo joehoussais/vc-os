@@ -2,8 +2,9 @@ import { useState, useMemo, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import { chartColors } from '../data/attioData';
-import { useAttioDeals } from '../hooks/useAttioDeals';
+import { useAttioCoverage } from '../hooks/useAttioCoverage';
 import { updateListEntry } from '../services/attioApi';
+import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 import { useTheme } from '../hooks/useTheme.jsx';
 import { granolaMeetings } from '../data/mockData';
 import { SHADOW_PORTFOLIO } from '../data/shadowPortfolio';
@@ -50,28 +51,6 @@ function monthsAgo(dateStr) {
   return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
 }
 
-function dateToMonthKey(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function monthKeyToLabel(key) {
-  const [year, month] = key.split('-');
-  const d = new Date(parseInt(year), parseInt(month) - 1);
-  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-}
-
-function monthKeyToQuarterKey(key) {
-  const [year, month] = key.split('-');
-  return `Q${Math.ceil(parseInt(month) / 3)} ${year}`;
-}
-
-function monthKeyToNum(key) {
-  const [year, month] = key.split('-');
-  return parseInt(year) * 12 + parseInt(month);
-}
 
 // ─── Constants ────────────────────────────────────────────
 
@@ -165,7 +144,7 @@ const SUB_TABS = [
 // ─── Main Component ───────────────────────────────────────
 
 export default function Sourcing() {
-  const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
+  const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioCoverage();
   const { theme } = useTheme();
   const [subTab, setSubTab] = useState('overview');
 
@@ -214,17 +193,17 @@ export default function Sourcing() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentQ = Math.ceil((now.getMonth() + 1) / 3);
-    for (let year = 2020; year <= currentYear; year++) {
+    for (let year = 2022; year <= currentYear; year++) {
       const maxQ = year === currentYear ? currentQ : 4;
       for (let q = 1; q <= maxQ; q++) quarters.push(`Q${q} ${year}`);
     }
     return quarters;
   }, []);
 
-  const [filters, setFilters] = useState({ country: 'all', stage: 'all', from: '', to: '', show: 'all' });
+  const [filters, setFilters] = useState({ country: 'all', stage: 'all', owner: 'all', from: '', to: '', show: 'all' });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  const effectiveFrom = filters.from || 'Q1 2023';
+  const effectiveFrom = filters.from || 'Q1 2022';
   const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
 
   const filteredDeals = useMemo(() => {
@@ -233,6 +212,7 @@ export default function Sourcing() {
     return deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
+      if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return false;
       if (filters.show === 'seen' && !d.seen) return false;
       if (filters.show === 'missed' && d.seen) return false;
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
@@ -246,6 +226,7 @@ export default function Sourcing() {
     const filtered = deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
+      if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return false;
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
     });
@@ -266,55 +247,29 @@ export default function Sourcing() {
     return { stageData, outcomeData };
   }, [deals]);
 
-  // Generate all months from Jan 2023 → now
-  const allMonths = useMemo(() => {
-    const months = [];
-    const now = new Date();
-    for (let y = 2023; y <= now.getFullYear(); y++) {
-      const maxM = y === now.getFullYear() ? now.getMonth() + 1 : 12;
-      for (let m = (y === 2023 ? 1 : 1); m <= maxM; m++) {
-        months.push(`${y}-${String(m).padStart(2, '0')}`);
-      }
-    }
-    return months;
-  }, []);
-
-  const monthlyChartData = useMemo(() => {
-    const byMonth = {};
-    deals.forEach(d => {
-      const mk = dateToMonthKey(d.announcedDate);
-      if (!mk) return;
-      if (!byMonth[mk]) byMonth[mk] = { total: 0, seen: 0 };
-      byMonth[mk].total++;
-      if (d.seen) byMonth[mk].seen++;
+  // Quarterly chart data — simple bars (count) + line (coverage %)
+  const quarterlyChartData = useMemo(() => {
+    const fromNum = quarterToNum(effectiveFrom);
+    const toNum = quarterToNum(effectiveTo);
+    const displayQuarters = allQuarters.filter(q => {
+      const n = quarterToNum(q);
+      return n >= fromNum && n <= toNum;
     });
-    // Quarterly aggregates for the coverage band
     const byQuarter = {};
     deals.forEach(d => {
       if (!d.date) return;
+      if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return;
       if (!byQuarter[d.date]) byQuarter[d.date] = { total: 0, seen: 0 };
       byQuarter[d.date].total++;
       if (d.seen) byQuarter[d.date].seen++;
     });
-    // Filter months within the selected quarter range
-    const fromNum = quarterToNum(effectiveFrom);
-    const toNum = quarterToNum(effectiveTo);
-    const displayMonths = allMonths.filter(mk => {
-      const qk = monthKeyToQuarterKey(mk);
-      const qn = quarterToNum(qk);
-      return qn >= fromNum && qn <= toNum;
-    });
-    const labels = displayMonths.map(monthKeyToLabel);
-    const dealCounts = displayMonths.map(mk => byMonth[mk]?.total || 0);
-    const monthlyCoverage = displayMonths.map(mk =>
-      byMonth[mk]?.total > 0 ? Math.round((byMonth[mk].seen / byMonth[mk].total) * 100) : null
+    const labels = displayQuarters;
+    const counts = displayQuarters.map(q => byQuarter[q]?.total || 0);
+    const coverage = displayQuarters.map(q =>
+      byQuarter[q]?.total > 0 ? Math.round((byQuarter[q].seen / byQuarter[q].total) * 100) : null
     );
-    const quarterlyCoverage = displayMonths.map(mk => {
-      const qk = monthKeyToQuarterKey(mk);
-      return byQuarter[qk]?.total > 0 ? Math.round((byQuarter[qk].seen / byQuarter[qk].total) * 100) : null;
-    });
-    return { labels, dealCounts, monthlyCoverage, quarterlyCoverage };
-  }, [deals, effectiveFrom, effectiveTo, allMonths]);
+    return { labels, counts, coverage };
+  }, [deals, effectiveFrom, effectiveTo, allQuarters, filters.owner]);
 
   // ─── Shadow Portfolio — ONLY deals we saw, analysed, and passed on ──
   // This is NOT about deals we missed. Those belong in Coverage.
@@ -432,7 +387,7 @@ export default function Sourcing() {
         </div>
       </div>
 
-      {subTab === 'overview' && <OverviewTab deals={deals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} monthlyChartData={monthlyChartData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} onToggleInScope={handleToggleInScope} updatingFields={updatingFields} />}
+      {subTab === 'overview' && <OverviewTab deals={deals} filteredDeals={filteredDeals} filters={filters} setFilters={setFilters} effectiveFrom={effectiveFrom} effectiveTo={effectiveTo} allQuarters={allQuarters} stats={stats} coverageByRegion={coverageByRegion} pieData={pieData} quarterlyChartData={quarterlyChartData} chartOptions={chartOptions} pieOptions={pieOptions} theme={theme} setSelectedDeal={setSelectedDeal} onToggleInScope={handleToggleInScope} updatingFields={updatingFields} />}
       {subTab === 'shadow' && <ShadowPortfolioTab shadowPortfolio={shadowPortfolio} attioDeals={deals} setSelectedDeal={setSelectedDeal} />}
       {subTab === 'scorecard' && <ScorecardTab scorecard={scorecard} attioDeals={deals} shadowPortfolio={shadowPortfolio} />}
 
@@ -443,18 +398,19 @@ export default function Sourcing() {
 
 // ─── Overview Tab ─────────────────────────────────────────
 
-function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, monthlyChartData, chartOptions, pieOptions, theme, setSelectedDeal, onToggleInScope, updatingFields }) {
+function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, quarterlyChartData, chartOptions, pieOptions, theme, setSelectedDeal, onToggleInScope, updatingFields }) {
   return (
     <>
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
+          <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilters({ ...filters, owner: v })} options={[{ value: 'all', label: 'All Owners' }, ...TEAM_MEMBERS.map(m => ({ value: m.id, label: m.name }))]} />
           <FilterSelect label="Country" value={filters.country} onChange={(v) => setFilters({ ...filters, country: v })} options={[{ value: 'all', label: 'All Countries' }, { value: 'France', label: 'France' }, { value: 'Germany', label: 'Germany & Benelux' }, { value: 'Nordics', label: 'Nordics' }, { value: 'Southern Europe', label: 'Southern Europe' }, { value: 'Eastern Europe', label: 'Eastern Europe' }, { value: 'Other', label: 'Other (UK, etc.)' }]} />
           <FilterSelect label="Stage" value={filters.stage} onChange={(v) => setFilters({ ...filters, stage: v })} options={[{ value: 'all', label: 'All Stages' }, { value: 'Pre-Seed', label: 'Pre-Seed' }, { value: 'Seed', label: 'Seed' }, { value: 'Series A', label: 'Series A' }, { value: 'Series B', label: 'Series B' }, { value: 'Series C', label: 'Series C' }, { value: 'Venture', label: 'Venture' }]} />
           <FilterSelect label="From" value={effectiveFrom} onChange={(v) => setFilters({ ...filters, from: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
           <FilterSelect label="To" value={effectiveTo} onChange={(v) => setFilters({ ...filters, to: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
-          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Deals' }, { value: 'seen', label: 'Seen Only' }, { value: 'missed', label: 'Missed Only' }]} />
+          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Companies' }, { value: 'seen', label: 'Seen Only' }, { value: 'missed', label: 'Missed Only' }]} />
           <div className="ml-auto flex items-center gap-4 text-[13px]">
-            <span className="text-[var(--text-tertiary)]">{stats.total} deals · {stats.seen} seen</span>
+            <span className="text-[var(--text-tertiary)]">{stats.total} companies · {stats.seen} seen</span>
             <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">{stats.coverage}% coverage</span>
           </div>
         </div>
@@ -463,27 +419,26 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
-            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">Monthly deals · quarterly coverage band</p></div>
-            <div className="text-right"><span className="text-3xl font-bold text-[var(--rrw-red)]">{stats.coverage}%</span><span className="text-xs text-[var(--text-tertiary)] block">Current</span></div>
+            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">Quarterly companies tracked · coverage %</p></div>
+            <div className="text-right"><span className="text-3xl font-bold text-[var(--rrw-red)]">{stats.coverage}%</span><span className="text-xs text-[var(--text-tertiary)] block">Overall</span></div>
           </div>
           <div className="h-72">
-            <Bar data={{ labels: monthlyChartData.labels, datasets: [
-              { type: 'line', label: 'Quarterly coverage %', data: monthlyChartData.quarterlyCoverage, borderColor: 'rgba(230, 52, 36, 0.3)', backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0, pointRadius: 0, borderWidth: 1, spanGaps: true, yAxisID: 'y', order: 3 },
-              { type: 'bar', label: 'Deals tracked', data: monthlyChartData.dealCounts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 3, yAxisID: 'y1', order: 2 },
-              { type: 'line', label: 'Monthly coverage %', data: monthlyChartData.monthlyCoverage, borderColor: chartColors.rrwRed, backgroundColor: 'transparent', tension: 0.3, pointRadius: 2, pointBackgroundColor: chartColors.rrwRed, spanGaps: false, yAxisID: 'y', order: 0 },
+            <Bar data={{ labels: quarterlyChartData.labels, datasets: [
+              { type: 'bar', label: 'Companies', data: quarterlyChartData.counts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', borderRadius: 4, yAxisID: 'y1', order: 2 },
+              { type: 'line', label: 'Coverage %', data: quarterlyChartData.coverage, borderColor: chartColors.rrwRed, backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: chartColors.rrwRed, spanGaps: false, yAxisID: 'y', order: 0 },
             ]}} options={chartOptions} />
           </div>
         </div>
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <div><h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3><p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals</p></div>
+            <div><h3 className="font-semibold text-[var(--text-primary)]">Company Coverage</h3><p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} companies</p></div>
           </div>
           <div className="flex items-center gap-3 text-[10px] text-[var(--text-quaternary)] mb-2 px-3">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Seen</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-blue-500/40 inline-block" /> In Scope</span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
-            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
+            {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No companies match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
           </div>
         </div>
       </div>
@@ -499,8 +454,8 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
         <h3 className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-4">Analytics</h3>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-        <PieCard title="Dealflow by region" labels={Object.keys(coverageByRegion)} data={Object.values(coverageByRegion).map(v => v.total)} options={pieOptions} />
-        <PieCard title="Dealflow by stage" labels={Object.keys(pieData.stageData)} data={Object.values(pieData.stageData)} options={pieOptions} />
+        <PieCard title="Companies by region" labels={Object.keys(coverageByRegion)} data={Object.values(coverageByRegion).map(v => v.total)} options={pieOptions} />
+        <PieCard title="Companies by stage" labels={Object.keys(pieData.stageData)} data={Object.values(pieData.stageData)} options={pieOptions} />
         <PieCard title="Outcome breakdown" labels={Object.keys(pieData.outcomeData)} data={Object.values(pieData.outcomeData)} options={pieOptions} />
       </div>
 
