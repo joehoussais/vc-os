@@ -110,6 +110,46 @@ const PASS_REASONS = {
   'No US path for now': 'No clear US expansion path',
 };
 
+// ─── Hardcoded shadow deals (not in Attio) ─────────────────
+// Deals we saw, analysed, and passed on — manually added because
+// they aren't tracked in Attio with the right status.
+const HARDCODED_SHADOW_DEALS = [
+  {
+    id: 'shadow-harmattan',
+    dealName: 'Harmattan AI (fka Deep Mine)',
+    company: 'Harmattan AI',
+    country: 'France',
+    filterRegion: 'France',
+    stage: 'Series A',
+    amount: 42, // $42M early funding
+    date: 'Q4 2024',
+    announcedDate: '2024-10-01',
+    seen: true,
+    status: 'Passed',
+    outcome: 'Passed',
+    industry: ['Defence', 'Drones', 'AI'],
+    rating: 8, // deal rating from Attio
+    logoUrl: 'https://www.harmattan.ai/favicon.ico',
+    totalFunding: '$242M', // $42M + $200M Series B
+    employeeRange: '50-100',
+    // Shadow-specific overrides
+    _shadowOverride: {
+      marketScore: 10, // Unicorn: €1.4B valuation
+      ourCallRating: 8,
+      callCount: 2,
+      passReason: 'Valuation too high (€300M pre-rev), founder perceived as too confident, partnership not ready for defence tech',
+      truthLines: [
+        'Series B: $200M led by Dassault Aviation (Jan 2026)',
+        'Unicorn: €1.4B valuation',
+        'French MoD ordered 1,000 drones',
+        'UK MoD contract: 3,000 systems',
+        'Founded April 2024 → unicorn in ~20 months',
+      ],
+      learningText: 'We underestimated the founder\'s ability to execute at speed. "Too confident" was actually conviction backed by deep domain expertise. The €300M pre-rev valuation seemed crazy — the market 5x\'d it within a year. Defence tech wave was real and we weren\'t ready to ride it.',
+    },
+  },
+];
+
 // Build a map of company name → Granola call ratings
 function buildCallRatingsMap(meetings, storedRatings) {
   const map = {}; // company name → { ratings: [], avgRating }
@@ -232,7 +272,7 @@ export default function Sourcing() {
   // Shadow = we had a thesis, we made a prediction, we said no.
   // Now the market tells us if we were right.
   const shadowPortfolio = useMemo(() => {
-    return attioDeals
+    const fromAttio = attioDeals
       .filter(d => d.outcome === 'Passed') // Only passed — we actively decided "no"
       .map(d => {
         const companyKey = (d.company || '').toLowerCase().trim();
@@ -245,8 +285,19 @@ export default function Sourcing() {
           passReason: PASS_REASONS[d.status] || 'Reviewed and passed',
           timeAgo: monthsAgo(d.announcedDate),
         };
-      })
-      .sort((a, b) => b.marketScore - a.marketScore);
+      });
+
+    // Merge hardcoded shadow deals (not in Attio)
+    const hardcoded = HARDCODED_SHADOW_DEALS.map(d => ({
+      ...d,
+      marketScore: d._shadowOverride?.marketScore ?? computeMarketScore(d),
+      ourCallRating: d._shadowOverride?.ourCallRating ?? d.rating ?? null,
+      callCount: d._shadowOverride?.callCount ?? 0,
+      passReason: d._shadowOverride?.passReason ?? 'Reviewed and passed',
+      timeAgo: monthsAgo(d.announcedDate),
+    }));
+
+    return [...fromAttio, ...hardcoded].sort((a, b) => b.marketScore - a.marketScore);
   }, [attioDeals, callRatingsMap]);
 
   // ─── Scorecard data ────────────────────────────────────
@@ -526,12 +577,15 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
   const isRight = deal.marketScore <= 2;
   const isTBD = !isWrong && !isRight;
 
-  // Truth: what actually happened
-  const truthLines = [];
-  if (deal.amount > 0) truthLines.push(`Raised €${deal.amount}M`);
-  if (deal.totalFunding) truthLines.push(`Total funding: ${deal.totalFunding}`);
-  if (deal.stage) truthLines.push(`Reached ${deal.stage}`);
-  if (deal.employeeRange) truthLines.push(`Team: ${deal.employeeRange}`);
+  // Truth: what actually happened (use override if available)
+  const truthLines = deal._shadowOverride?.truthLines || (() => {
+    const lines = [];
+    if (deal.amount > 0) lines.push(`Raised €${deal.amount}M`);
+    if (deal.totalFunding) lines.push(`Total funding: ${deal.totalFunding}`);
+    if (deal.stage) lines.push(`Reached ${deal.stage}`);
+    if (deal.employeeRange) lines.push(`Team: ${deal.employeeRange}`);
+    return lines;
+  })();
 
   return (
     <div className={`bg-[var(--bg-primary)] border rounded-lg overflow-hidden transition-all ${
@@ -630,20 +684,28 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
               'bg-[var(--bg-secondary)] border-[var(--border-subtle)]'
             }`}>
               <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Learning</div>
-              {isWrong && (
-                <div className="text-[13px] text-red-500 font-medium mb-1">
-                  We were wrong. They went on to raise significantly.
+              {deal._shadowOverride?.learningText ? (
+                <div className={`text-[13px] mb-1 ${isWrong ? 'text-red-500' : isRight ? 'text-emerald-500' : 'text-[var(--text-secondary)]'}`}>
+                  {deal._shadowOverride.learningText}
                 </div>
-              )}
-              {isRight && (
-                <div className="text-[13px] text-emerald-500 font-medium mb-1">
-                  Good pass — confirmed by market.
-                </div>
-              )}
-              {isTBD && (
-                <div className="text-[13px] text-[var(--text-secondary)] mb-1">
-                  Outcome still developing. Check back later.
-                </div>
+              ) : (
+                <>
+                  {isWrong && (
+                    <div className="text-[13px] text-red-500 font-medium mb-1">
+                      We were wrong. They went on to raise significantly.
+                    </div>
+                  )}
+                  {isRight && (
+                    <div className="text-[13px] text-emerald-500 font-medium mb-1">
+                      Good pass — confirmed by market.
+                    </div>
+                  )}
+                  {isTBD && (
+                    <div className="text-[13px] text-[var(--text-secondary)] mb-1">
+                      Outcome still developing. Check back later.
+                    </div>
+                  )}
+                </>
               )}
               {/* Delta between our call and market */}
               {deal.ourCallRating && (
