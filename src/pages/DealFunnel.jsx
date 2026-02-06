@@ -301,12 +301,10 @@ export default function DealFunnel() {
                         }`}
                         style={{ width: `${width}%` }}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</span>
-                          <span className="text-lg font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</span>
-                        </div>
-                        <div className="text-[11px] text-[var(--text-quaternary)] mt-0.5">
-                          {stage.stageCount} at this stage
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                          <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
+                          <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">{stage.stageCount} at this stage</div>
                         </div>
                       </div>
                     </div>
@@ -354,18 +352,12 @@ export default function DealFunnel() {
                                 : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</span>
-                                <span className="text-[10px] text-[var(--text-quaternary)] italic" title={STAGE_DEFINITIONS[stage.id]}>
-                                  ?
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {stage.avgGrowthScore != null && (
-                                  <span className="text-[11px] text-[var(--text-quaternary)]">⌀ {stage.avgGrowthScore}</span>
-                                )}
-                                <span className="text-lg font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</span>
+                            <div className="text-center">
+                              <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                              <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
+                              <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
+                                {STAGE_DEFINITIONS[stage.id]}
+                                {stage.avgGrowthScore != null && ` · ⌀ ${stage.avgGrowthScore}`}
                               </div>
                             </div>
                           </div>
@@ -424,21 +416,12 @@ export default function DealFunnel() {
                         }`}
                         style={{ width: `${width}%` }}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</span>
-                            <span
-                              className="text-[10px] text-[var(--text-quaternary)] hidden sm:inline"
-                              title={STAGE_DEFINITIONS[stage.id]}
-                            >
-                              — {STAGE_DEFINITIONS[stage.id]}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {stage.avgGrowthScore != null && (
-                              <span className="text-[11px] text-[var(--text-quaternary)]">⌀ {stage.avgGrowthScore}</span>
-                            )}
-                            <span className="text-lg font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</span>
+                        <div className="text-center">
+                          <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                          <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
+                          <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
+                            {STAGE_DEFINITIONS[stage.id]}
+                            {stage.avgGrowthScore != null && ` · ⌀ ${stage.avgGrowthScore}`}
                           </div>
                         </div>
                       </div>
