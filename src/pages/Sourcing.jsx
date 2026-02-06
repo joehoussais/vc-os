@@ -8,7 +8,8 @@ import Modal from '../components/Modal';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend);
 
-// Helper to convert "Q1 2025" to a comparable number for sorting/filtering
+// ─── Helpers ──────────────────────────────────────────────
+
 function quarterToNum(q) {
   if (!q) return 0;
   const match = q.match(/Q(\d)\s+(\d{4})/);
@@ -16,7 +17,6 @@ function quarterToNum(q) {
   return parseInt(match[2]) * 4 + parseInt(match[1]);
 }
 
-// Format a date string like "2025-03-12" to "Mar 2025"
 function formatMonth(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -24,7 +24,6 @@ function formatMonth(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-// Calculate coverage by region from deals
 function calculateCoverageByRegion(deals) {
   const regions = ['France', 'Germany', 'Nordics', 'Southern Europe', 'Eastern Europe', 'Other'];
   const result = {};
@@ -40,7 +39,17 @@ function calculateCoverageByRegion(deals) {
   return result;
 }
 
-// Outcome badge colors
+// How many months ago was this date?
+function monthsAgo(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+}
+
+// ─── Constants ────────────────────────────────────────────
+
 const OUTCOME_STYLES = {
   'Invested': 'bg-emerald-500/10 text-emerald-500',
   'IC': 'bg-blue-500/10 text-blue-500',
@@ -52,11 +61,44 @@ const OUTCOME_STYLES = {
   'Missed': 'bg-red-500/10 text-red-500',
 };
 
+// Regret score: given a passed/missed deal, how much should you regret it?
+// Based on subsequent funding amount and investor quality signals
+function computeRegretScore(deal) {
+  let score = 0;
+
+  // Amount raised subsequently (higher = more regret)
+  if (deal.amount >= 100) score += 4;
+  else if (deal.amount >= 50) score += 3;
+  else if (deal.amount >= 20) score += 2;
+  else if (deal.amount >= 5) score += 1;
+
+  // Rating at the time (higher initial rating + pass = more regret)
+  if (deal.rating >= 8) score += 3;
+  else if (deal.rating >= 6) score += 2;
+  else if (deal.rating >= 4) score += 1;
+
+  // Time factor — deals that succeeded quickly after passing are more painful
+  const months = monthsAgo(deal.announcedDate);
+  if (months !== null && months <= 12) score += 2;
+  else if (months !== null && months <= 24) score += 1;
+
+  return Math.min(score, 10);
+}
+
+const SUB_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'shadow', label: 'Shadow Portfolio' },
+  { id: 'scorecard', label: 'Scorecard' },
+];
+
+// ─── Main Component ───────────────────────────────────────
+
 export default function Sourcing() {
   const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
   const { theme } = useTheme();
 
-  // Build full quarter range from Q1 2021 to Q1 2026
+  const [subTab, setSubTab] = useState('overview');
+
   const allQuarters = useMemo(() => {
     const quarters = [];
     for (let year = 2021; year <= 2026; year++) {
@@ -77,11 +119,9 @@ export default function Sourcing() {
   });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  // Default from/to: Q1 2021 → Q1 2026
   const effectiveFrom = filters.from || 'Q1 2021';
   const effectiveTo = filters.to || 'Q1 2026';
 
-  // Apply filters including date range
   const filteredDeals = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
@@ -95,12 +135,9 @@ export default function Sourcing() {
         if (dNum < fromNum || dNum > toNum) return false;
       }
       return true;
-    }).sort((a, b) => {
-      return new Date(b.announcedDate) - new Date(a.announcedDate);
-    });
+    }).sort((a, b) => new Date(b.announcedDate) - new Date(a.announcedDate));
   }, [attioDeals, filters, effectiveFrom, effectiveTo]);
 
-  // Calculate coverage stats (also respects date range)
   const stats = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
@@ -118,10 +155,8 @@ export default function Sourcing() {
     return { total: filtered.length, seen: seenCount, coverage };
   }, [attioDeals, filters, effectiveFrom, effectiveTo]);
 
-  // Calculate coverage by region
   const coverageByRegion = useMemo(() => calculateCoverageByRegion(attioDeals), [attioDeals]);
 
-  // Calculate pie chart data
   const pieData = useMemo(() => {
     const stageData = {};
     const outcomeData = {};
@@ -132,9 +167,7 @@ export default function Sourcing() {
     return { stageData, outcomeData };
   }, [attioDeals]);
 
-  // Compute per-quarter stats from real deal data across the full selected range
   const quarterlyData = useMemo(() => {
-    // Group deals by quarter
     const byQ = {};
     attioDeals.forEach(d => {
       if (!d.date) return;
@@ -142,30 +175,103 @@ export default function Sourcing() {
       byQ[d.date].total++;
       if (d.seen) byQ[d.date].seen++;
     });
-
-    // Use ALL quarters in range, not just those with data
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
     const filtered = allQuarters.filter(q => {
       const n = quarterToNum(q);
       return n >= fromNum && n <= toNum;
     });
-
     const labels = filtered;
     const dealCounts = filtered.map(q => (byQ[q]?.total || 0));
     const coverageRates = filtered.map(q =>
       byQ[q]?.total > 0 ? Math.round((byQ[q].seen / byQ[q].total) * 100) : 0
     );
-
-    // Trailing 4-quarter average on coverage
     const trailing = coverageRates.map((_, i) => {
       if (i < 3) return null;
       const slice = coverageRates.slice(i - 3, i + 1);
       return Math.round(slice.reduce((a, b) => a + b, 0) / slice.length);
     });
-
     return { labels, dealCounts, coverageRates, trailing };
   }, [attioDeals, effectiveFrom, effectiveTo, allQuarters]);
+
+  // ─── Shadow Portfolio data ─────────────────────────────
+  const shadowPortfolio = useMemo(() => {
+    // Shadow = deals you passed on OR missed entirely
+    return attioDeals
+      .filter(d => d.outcome === 'Passed' || d.outcome === 'Missed')
+      .map(d => ({
+        ...d,
+        regretScore: computeRegretScore(d),
+        timeAgo: monthsAgo(d.announcedDate),
+      }))
+      .sort((a, b) => b.regretScore - a.regretScore);
+  }, [attioDeals]);
+
+  // ─── Scorecard data ────────────────────────────────────
+  const scorecard = useMemo(() => {
+    const total = attioDeals.length;
+    if (total === 0) return null;
+
+    const seen = attioDeals.filter(d => d.seen).length;
+    const passed = attioDeals.filter(d => d.outcome === 'Passed').length;
+    const missed = attioDeals.filter(d => d.outcome === 'Missed').length;
+    const invested = attioDeals.filter(d => d.outcome === 'Invested').length;
+    const ic = attioDeals.filter(d => d.outcome === 'IC').length;
+    const dd = attioDeals.filter(d => d.outcome === 'DD').length;
+    const inPipeline = attioDeals.filter(d => d.outcome === 'In Pipeline').length;
+
+    // Conversion rates
+    const seenToDD = seen > 0 ? Math.round((dd + ic + invested) / seen * 100) : 0;
+    const ddToIC = (dd + ic + invested) > 0 ? Math.round((ic + invested) / (dd + ic + invested) * 100) : 0;
+    const icToInvested = (ic + invested) > 0 ? Math.round(invested / (ic + invested) * 100) : 0;
+    const passRate = seen > 0 ? Math.round(passed / seen * 100) : 0;
+
+    // High-conviction misses (rated >= 6 but passed/missed)
+    const highConvictionMisses = attioDeals.filter(
+      d => (d.outcome === 'Passed' || d.outcome === 'Missed') && d.rating >= 6
+    );
+
+    // Pattern analysis: which sectors/regions do we pass on most?
+    const passedByRegion = {};
+    const passedByStage = {};
+    const passedBySector = {};
+    attioDeals.filter(d => d.outcome === 'Passed' || d.outcome === 'Missed').forEach(d => {
+      passedByRegion[d.filterRegion] = (passedByRegion[d.filterRegion] || 0) + 1;
+      passedByStage[d.stage] = (passedByStage[d.stage] || 0) + 1;
+      if (d.industry) {
+        d.industry.forEach(ind => {
+          passedBySector[ind] = (passedBySector[ind] || 0) + 1;
+        });
+      }
+    });
+
+    // Average initial rating by outcome
+    const ratingByOutcome = {};
+    attioDeals.filter(d => d.rating).forEach(d => {
+      if (!ratingByOutcome[d.outcome]) ratingByOutcome[d.outcome] = { sum: 0, count: 0 };
+      ratingByOutcome[d.outcome].sum += d.rating;
+      ratingByOutcome[d.outcome].count++;
+    });
+    const avgRatingByOutcome = {};
+    for (const [outcome, { sum, count }] of Object.entries(ratingByOutcome)) {
+      avgRatingByOutcome[outcome] = (sum / count).toFixed(1);
+    }
+
+    // Quarterly judgment accuracy: how well do our ratings predict outcomes?
+    const ratedDeals = attioDeals.filter(d => d.rating);
+    const highRatedGoodOutcome = ratedDeals.filter(d => d.rating >= 6 && (d.outcome === 'Invested' || d.outcome === 'IC' || d.outcome === 'DD')).length;
+    const highRatedTotal = ratedDeals.filter(d => d.rating >= 6).length;
+    const judgmentAccuracy = highRatedTotal > 0 ? Math.round(highRatedGoodOutcome / highRatedTotal * 100) : null;
+
+    return {
+      total, seen, passed, missed, invested, ic, dd, inPipeline,
+      seenToDD, ddToIC, icToInvested, passRate,
+      highConvictionMisses,
+      passedByRegion, passedByStage, passedBySector,
+      avgRatingByOutcome,
+      judgmentAccuracy,
+    };
+  }, [attioDeals]);
 
   const chartOptions = {
     responsive: true,
@@ -173,17 +279,8 @@ export default function Sourcing() {
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
-        display: true,
-        position: 'top',
-        align: 'end',
-        labels: {
-          boxWidth: 20,
-          boxHeight: 2,
-          font: { size: 11 },
-          color: 'var(--text-tertiary)',
-          usePointStyle: false,
-          padding: 16,
-        }
+        display: true, position: 'top', align: 'end',
+        labels: { boxWidth: 20, boxHeight: 2, font: { size: 11 }, color: 'var(--text-tertiary)', usePointStyle: false, padding: 16 }
       },
       tooltip: {
         callbacks: {
@@ -195,53 +292,104 @@ export default function Sourcing() {
       }
     },
     scales: {
-      y: {
-        type: 'linear',
-        position: 'left',
-        min: 0,
-        max: 100,
-        ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' },
-        grid: { color: 'var(--border-subtle)' },
-        title: { display: false },
-      },
-      y1: {
-        type: 'linear',
-        position: 'right',
-        min: 0,
-        ticks: { color: 'var(--text-tertiary)', precision: 0 },
-        grid: { drawOnChartArea: false },
-        title: { display: false },
-      },
-      x: {
-        ticks: { color: 'var(--text-tertiary)' },
-        grid: { color: 'var(--border-subtle)' }
-      }
+      y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } },
+      y1: { type: 'linear', position: 'right', min: 0, ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { drawOnChartArea: false } },
+      x: { ticks: { color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } }
     }
   };
 
   const pieOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          boxWidth: 12,
-          font: { size: 10 },
-          color: 'var(--text-secondary)'
-        }
-      }
-    }
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 }, color: 'var(--text-secondary)' } } }
   };
 
   return (
     <div>
+      {/* Sub-tab Navigation */}
+      <div className="flex items-center gap-1 mb-4">
+        {SUB_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setSubTab(tab.id)}
+            className={`px-4 py-2 text-[13px] rounded-lg transition-all duration-150 ${
+              subTab === tab.id
+                ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] font-medium border border-[var(--border-default)] shadow-[var(--shadow-xs)]'
+                : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+        <div className="ml-auto">
+          <span className={`px-2 py-1 rounded text-[11px] font-medium ${
+            attioLoading ? 'bg-amber-500/10 text-amber-500' :
+            isLive ? 'bg-emerald-500/10 text-emerald-500' :
+            'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]'
+          }`}>
+            {attioLoading ? 'Syncing...' : isLive ? 'Attio Live' : 'Attio (Static)'}
+          </span>
+        </div>
+      </div>
+
+      {/* ═══════════════ OVERVIEW ═══════════════ */}
+      {subTab === 'overview' && (
+        <OverviewTab
+          attioDeals={attioDeals}
+          filteredDeals={filteredDeals}
+          filters={filters}
+          setFilters={setFilters}
+          effectiveFrom={effectiveFrom}
+          effectiveTo={effectiveTo}
+          allQuarters={allQuarters}
+          stats={stats}
+          coverageByRegion={coverageByRegion}
+          pieData={pieData}
+          quarterlyData={quarterlyData}
+          chartOptions={chartOptions}
+          pieOptions={pieOptions}
+          theme={theme}
+          selectedDeal={selectedDeal}
+          setSelectedDeal={setSelectedDeal}
+          attioLoading={attioLoading}
+          isLive={isLive}
+        />
+      )}
+
+      {/* ═══════════════ SHADOW PORTFOLIO ═══════════════ */}
+      {subTab === 'shadow' && (
+        <ShadowPortfolioTab
+          shadowPortfolio={shadowPortfolio}
+          attioDeals={attioDeals}
+          selectedDeal={selectedDeal}
+          setSelectedDeal={setSelectedDeal}
+        />
+      )}
+
+      {/* ═══════════════ SCORECARD ═══════════════ */}
+      {subTab === 'scorecard' && (
+        <ScorecardTab
+          scorecard={scorecard}
+          attioDeals={attioDeals}
+          shadowPortfolio={shadowPortfolio}
+          pieOptions={pieOptions}
+        />
+      )}
+
+      {/* Shared Modal */}
+      <DealModal deal={selectedDeal} onClose={() => setSelectedDeal(null)} />
+    </div>
+  );
+}
+
+// ─── Overview Tab ─────────────────────────────────────────
+
+function OverviewTab({ attioDeals, filteredDeals, filters, setFilters, effectiveFrom, effectiveTo, allQuarters, stats, coverageByRegion, pieData, quarterlyData, chartOptions, pieOptions, theme, selectedDeal, setSelectedDeal, attioLoading, isLive }) {
+  return (
+    <>
       {/* Filter Bar */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
-          <FilterSelect
-            label="Country"
-            value={filters.country}
+          <FilterSelect label="Country" value={filters.country}
             onChange={(v) => setFilters({ ...filters, country: v })}
             options={[
               { value: 'all', label: 'All Countries' },
@@ -253,9 +401,7 @@ export default function Sourcing() {
               { value: 'Other', label: 'Other (UK, etc.)' },
             ]}
           />
-          <FilterSelect
-            label="Stage"
-            value={filters.stage}
+          <FilterSelect label="Stage" value={filters.stage}
             onChange={(v) => setFilters({ ...filters, stage: v })}
             options={[
               { value: 'all', label: 'All Stages' },
@@ -267,21 +413,15 @@ export default function Sourcing() {
               { value: 'Venture', label: 'Venture' },
             ]}
           />
-          <FilterSelect
-            label="From"
-            value={effectiveFrom}
+          <FilterSelect label="From" value={effectiveFrom}
             onChange={(v) => setFilters({ ...filters, from: v })}
             options={allQuarters.map(q => ({ value: q, label: q }))}
           />
-          <FilterSelect
-            label="To"
-            value={effectiveTo}
+          <FilterSelect label="To" value={effectiveTo}
             onChange={(v) => setFilters({ ...filters, to: v })}
             options={allQuarters.map(q => ({ value: q, label: q }))}
           />
-          <FilterSelect
-            label="Show"
-            value={filters.show}
+          <FilterSelect label="Show" value={filters.show}
             onChange={(v) => setFilters({ ...filters, show: v })}
             options={[
               { value: 'all', label: 'All Deals' },
@@ -290,19 +430,14 @@ export default function Sourcing() {
             ]}
           />
           <div className="ml-auto flex items-center gap-4 text-[13px]">
-            <span className="text-[var(--text-tertiary)]">
-              {stats.total} deals · {stats.seen} seen
-            </span>
-            <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">
-              {stats.coverage}% coverage
-            </span>
+            <span className="text-[var(--text-tertiary)]">{stats.total} deals · {stats.seen} seen</span>
+            <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">{stats.coverage}% coverage</span>
           </div>
         </div>
       </div>
 
-      {/* Main Section */}
+      {/* Chart + Deal List */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Coverage Chart */}
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -319,41 +454,9 @@ export default function Sourcing() {
               data={{
                 labels: quarterlyData.labels,
                 datasets: [
-                  {
-                    type: 'bar',
-                    label: 'Deals tracked',
-                    data: quarterlyData.dealCounts,
-                    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                    borderRadius: 3,
-                    yAxisID: 'y1',
-                    order: 2,
-                  },
-                  {
-                    type: 'line',
-                    label: 'Coverage %',
-                    data: quarterlyData.coverageRates,
-                    borderColor: chartColors.rrwRed,
-                    backgroundColor: 'transparent',
-                    tension: 0.3,
-                    pointRadius: 3,
-                    pointBackgroundColor: chartColors.rrwRed,
-                    yAxisID: 'y',
-                    order: 0,
-                  },
-                  {
-                    type: 'line',
-                    label: '12-mo trailing avg',
-                    data: quarterlyData.trailing,
-                    borderColor: theme === 'dark' ? '#c2c0b6' : '#141413',
-                    backgroundColor: 'transparent',
-                    borderDash: [6, 3],
-                    borderWidth: 1.5,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    spanGaps: false,
-                    yAxisID: 'y',
-                    order: 1,
-                  },
+                  { type: 'bar', label: 'Deals tracked', data: quarterlyData.dealCounts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 3, yAxisID: 'y1', order: 2 },
+                  { type: 'line', label: 'Coverage %', data: quarterlyData.coverageRates, borderColor: chartColors.rrwRed, backgroundColor: 'transparent', tension: 0.3, pointRadius: 3, pointBackgroundColor: chartColors.rrwRed, yAxisID: 'y', order: 0 },
+                  { type: 'line', label: '12-mo trailing avg', data: quarterlyData.trailing, borderColor: theme === 'dark' ? '#c2c0b6' : '#141413', backgroundColor: 'transparent', borderDash: [6, 3], borderWidth: 1.5, tension: 0.3, pointRadius: 0, spanGaps: false, yAxisID: 'y', order: 1 },
                 ]
               }}
               options={chartOptions}
@@ -361,35 +464,19 @@ export default function Sourcing() {
           </div>
         </div>
 
-        {/* Recent Deals */}
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3>
-              <p className="text-xs text-[var(--text-tertiary)]">
-                {filteredDeals.length} deals · derived from Attio deal & company status
-              </p>
+              <p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals · derived from Attio deal & company status</p>
             </div>
-            <span className={`px-2 py-1 rounded text-[11px] font-medium ${
-              attioLoading ? 'bg-amber-500/10 text-amber-500' :
-              isLive ? 'bg-emerald-500/10 text-emerald-500' :
-              'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]'
-            }`}>
-              {attioLoading ? 'Syncing...' : isLive ? 'Attio Live' : 'Attio (Static)'}
-            </span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
             {filteredDeals.length === 0 ? (
-              <div className="p-8 text-center text-[var(--text-tertiary)]">
-                No deals match your filters
-              </div>
+              <div className="p-8 text-center text-[var(--text-tertiary)]">No deals match your filters</div>
             ) : (
               filteredDeals.map(deal => (
-                <DealRow
-                  key={deal.id}
-                  deal={deal}
-                  onClick={() => setSelectedDeal(deal)}
-                />
+                <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} />
               ))
             )}
           </div>
@@ -411,26 +498,10 @@ export default function Sourcing() {
         <h3 className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-4">Analytics</h3>
       </div>
 
-      {/* Pie Charts */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-        <PieCard
-          title="Dealflow by region"
-          labels={Object.keys(coverageByRegion)}
-          data={Object.values(coverageByRegion).map(v => v.total)}
-          options={pieOptions}
-        />
-        <PieCard
-          title="Dealflow by stage"
-          labels={Object.keys(pieData.stageData)}
-          data={Object.values(pieData.stageData)}
-          options={pieOptions}
-        />
-        <PieCard
-          title="Outcome breakdown"
-          labels={Object.keys(pieData.outcomeData)}
-          data={Object.values(pieData.outcomeData)}
-          options={pieOptions}
-        />
+        <PieCard title="Dealflow by region" labels={Object.keys(coverageByRegion)} data={Object.values(coverageByRegion).map(v => v.total)} options={pieOptions} />
+        <PieCard title="Dealflow by stage" labels={Object.keys(pieData.stageData)} data={Object.values(pieData.stageData)} options={pieOptions} />
+        <PieCard title="Outcome breakdown" labels={Object.keys(pieData.outcomeData)} data={Object.values(pieData.outcomeData)} options={pieOptions} />
       </div>
 
       {/* Outcome Summary */}
@@ -444,92 +515,361 @@ export default function Sourcing() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {Object.entries(pieData.outcomeData).sort((a, b) => b[1] - a[1]).map(([outcome, count]) => (
             <div key={outcome} className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
-              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>
-                {outcome}
-              </span>
+              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>{outcome}</span>
               <div className="text-xl font-bold text-[var(--text-primary)]">{count}</div>
-              <div className="text-[11px] text-[var(--text-quaternary)]">
-                {attioDeals.length > 0 ? Math.round((count / attioDeals.length) * 100) : 0}%
-              </div>
+              <div className="text-[11px] text-[var(--text-quaternary)]">{attioDeals.length > 0 ? Math.round((count / attioDeals.length) * 100) : 0}%</div>
             </div>
           ))}
         </div>
       </div>
-
-      {/* Modal */}
-      <Modal isOpen={!!selectedDeal} onClose={() => setSelectedDeal(null)}>
-        {selectedDeal && (
-          <div className="p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-3">
-                {selectedDeal.logoUrl && (
-                  <img
-                    src={selectedDeal.logoUrl}
-                    alt={selectedDeal.company}
-                    className="w-12 h-12 rounded-lg object-contain bg-[var(--bg-tertiary)]"
-                  />
-                )}
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDeal.dealName || selectedDeal.company}</h2>
-                  <p className="text-[13px] text-[var(--text-secondary)]">
-                    {selectedDeal.country}{selectedDeal.amount > 0 ? ` · €${selectedDeal.amount}M` : ''}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setSelectedDeal(null)} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {selectedDeal.description && (
-              <p className="text-[13px] text-[var(--text-secondary)] mb-4">
-                {selectedDeal.description}
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <InfoCard label="Quarter" value={selectedDeal.date} />
-              <InfoCard label="Outcome" value={selectedDeal.outcome} highlight={selectedDeal.outcome === 'Invested' || selectedDeal.outcome === 'IC'} />
-              <InfoCard label="Attio Status" value={selectedDeal.status || '—'} />
-              <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
-              <InfoCard label="Total Funding" value={selectedDeal.totalFunding || '—'} />
-              <InfoCard label="Team Size" value={selectedDeal.employeeRange || '—'} />
-            </div>
-
-            {/* Seen/Coverage status */}
-            <div className="flex items-center gap-3 mb-4">
-              <span className={`px-2.5 py-1 rounded text-[12px] font-medium ${selectedDeal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                {selectedDeal.seen ? 'Seen' : 'Missed'}
-              </span>
-              {selectedDeal.receivedDate && (
-                <span className="text-[12px] text-[var(--text-tertiary)]">
-                  Received {formatMonth(selectedDeal.receivedDate)}
-                </span>
-              )}
-            </div>
-
-            {selectedDeal.industry?.length > 0 && (
-              <div className="mb-4">
-                <div className="text-[11px] text-[var(--text-tertiary)] mb-2">Industries</div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedDeal.industry.map((tag, i) => (
-                    <span key={i} className="px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-[11px] rounded">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-    </div>
+    </>
   );
 }
 
-// Components
+// ─── Shadow Portfolio Tab ─────────────────────────────────
+
+function ShadowPortfolioTab({ shadowPortfolio, attioDeals, selectedDeal, setSelectedDeal }) {
+  const [shadowFilter, setShadowFilter] = useState('all'); // all | passed | missed
+  const [sortBy, setSortBy] = useState('regret'); // regret | amount | rating | date
+
+  const filtered = useMemo(() => {
+    let list = shadowPortfolio;
+    if (shadowFilter === 'passed') list = list.filter(d => d.outcome === 'Passed');
+    if (shadowFilter === 'missed') list = list.filter(d => d.outcome === 'Missed');
+
+    if (sortBy === 'amount') list = [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    else if (sortBy === 'rating') list = [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    else if (sortBy === 'date') list = [...list].sort((a, b) => new Date(b.announcedDate) - new Date(a.announcedDate));
+    // regret is default sort from parent
+
+    return list;
+  }, [shadowPortfolio, shadowFilter, sortBy]);
+
+  const passedCount = shadowPortfolio.filter(d => d.outcome === 'Passed').length;
+  const missedCount = shadowPortfolio.filter(d => d.outcome === 'Missed').length;
+  const avgRegret = shadowPortfolio.length > 0
+    ? (shadowPortfolio.reduce((sum, d) => sum + d.regretScore, 0) / shadowPortfolio.length).toFixed(1)
+    : '0';
+  const highRegret = shadowPortfolio.filter(d => d.regretScore >= 7).length;
+
+  // Top regret sectors
+  const regretBySector = {};
+  shadowPortfolio.filter(d => d.regretScore >= 5).forEach(d => {
+    if (d.industry) {
+      d.industry.forEach(ind => {
+        if (!regretBySector[ind]) regretBySector[ind] = { count: 0, totalRegret: 0 };
+        regretBySector[ind].count++;
+        regretBySector[ind].totalRegret += d.regretScore;
+      });
+    }
+  });
+  const topRegretSectors = Object.entries(regretBySector)
+    .sort((a, b) => b[1].totalRegret - a[1].totalRegret)
+    .slice(0, 5);
+
+  // Regret by region
+  const regretByRegion = {};
+  shadowPortfolio.forEach(d => {
+    if (!regretByRegion[d.filterRegion]) regretByRegion[d.filterRegion] = { count: 0, totalRegret: 0 };
+    regretByRegion[d.filterRegion].count++;
+    regretByRegion[d.filterRegion].totalRegret += d.regretScore;
+  });
+
+  return (
+    <>
+      <div className="mb-4">
+        <p className="text-[13px] text-[var(--text-secondary)] mb-4">
+          Deals you passed on or never saw that went on to raise. The regret score (0-10) combines round size, your initial rating, and recency to highlight the biggest misses.
+        </p>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatCard label="Shadow Deals" value={shadowPortfolio.length} sub={`${passedCount} passed · ${missedCount} missed`} />
+        <StatCard label="Avg Regret Score" value={avgRegret + '/10'} sub="Across all shadow deals" color={parseFloat(avgRegret) >= 5 ? 'text-red-500' : 'text-amber-500'} />
+        <StatCard label="High Regret" value={highRegret} sub="Deals scored 7+ regret" color="text-red-500" />
+        <StatCard label="Shadow Rate" value={attioDeals.length > 0 ? Math.round(shadowPortfolio.length / attioDeals.length * 100) + '%' : '0%'} sub="Of all tracked deals" />
+      </div>
+
+      {/* Filter + Sort Bar */}
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <FilterSelect label="Show" value={shadowFilter}
+            onChange={setShadowFilter}
+            options={[
+              { value: 'all', label: 'All Shadow Deals' },
+              { value: 'passed', label: 'Passed Only' },
+              { value: 'missed', label: 'Missed Only' },
+            ]}
+          />
+          <FilterSelect label="Sort by" value={sortBy}
+            onChange={setSortBy}
+            options={[
+              { value: 'regret', label: 'Regret Score' },
+              { value: 'amount', label: 'Amount Raised' },
+              { value: 'rating', label: 'Initial Rating' },
+              { value: 'date', label: 'Most Recent' },
+            ]}
+          />
+          <div className="ml-auto text-[13px] text-[var(--text-tertiary)]">
+            {filtered.length} deals
+          </div>
+        </div>
+      </div>
+
+      {/* Shadow Deal List */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="lg:col-span-2 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-[var(--border-default)]">
+            <h3 className="font-semibold text-[var(--text-primary)]">Shadow Portfolio</h3>
+            <p className="text-xs text-[var(--text-tertiary)]">Deals that got away — sorted by regret</p>
+          </div>
+          <div className="max-h-[600px] overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="p-8 text-center text-[var(--text-tertiary)]">No shadow deals found</div>
+            ) : (
+              filtered.map(deal => (
+                <ShadowDealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Insights sidebar */}
+        <div className="space-y-4">
+          {/* Regret by Region */}
+          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
+            <h4 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Regret by Region</h4>
+            <div className="space-y-2">
+              {Object.entries(regretByRegion)
+                .sort((a, b) => b[1].totalRegret / b[1].count - a[1].totalRegret / a[1].count)
+                .map(([region, data]) => {
+                  const avgR = (data.totalRegret / data.count).toFixed(1);
+                  return (
+                    <div key={region} className="flex items-center justify-between">
+                      <span className="text-[13px] text-[var(--text-secondary)]">{region}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[var(--text-quaternary)]">{data.count} deals</span>
+                        <RegretBadge score={parseFloat(avgR)} />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Top Regret Sectors */}
+          {topRegretSectors.length > 0 && (
+            <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
+              <h4 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">Blind Spots by Sector</h4>
+              <p className="text-[11px] text-[var(--text-tertiary)] mb-3">Sectors where regret-5+ deals concentrate</p>
+              <div className="space-y-2">
+                {topRegretSectors.map(([sector, data]) => (
+                  <div key={sector} className="flex items-center justify-between">
+                    <span className="text-[13px] text-[var(--text-secondary)] truncate mr-2">{sector}</span>
+                    <span className="text-[11px] text-[var(--text-quaternary)] shrink-0">{data.count} deals</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Scorecard Tab ────────────────────────────────────────
+
+function ScorecardTab({ scorecard, attioDeals, shadowPortfolio, pieOptions }) {
+  if (!scorecard) {
+    return <div className="p-8 text-center text-[var(--text-tertiary)]">No data available</div>;
+  }
+
+  // Build rating distribution data for passed vs invested
+  const ratingBuckets = ['1-2', '3-4', '5-6', '7-8', '9-10'];
+  const bucketRange = [[1,2],[3,4],[5,6],[7,8],[9,10]];
+
+  const investedByRating = bucketRange.map(([lo, hi]) =>
+    attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Invested').length
+  );
+  const passedByRating = bucketRange.map(([lo, hi]) =>
+    attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Passed').length
+  );
+  const missedByRating = bucketRange.map(([lo, hi]) =>
+    attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Missed').length
+  );
+
+  return (
+    <>
+      <div className="mb-4">
+        <p className="text-[13px] text-[var(--text-secondary)]">
+          How well is RRW's judgment performing? This scorecard compares initial ratings against outcomes to measure calibration.
+        </p>
+      </div>
+
+      {/* Key Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
+        <StatCard label="Total Deals" value={scorecard.total} sub="All tracked" />
+        <StatCard label="Coverage" value={Math.round(scorecard.seen / scorecard.total * 100) + '%'} sub={`${scorecard.seen} of ${scorecard.total} seen`} />
+        <StatCard label="Pass Rate" value={scorecard.passRate + '%'} sub={`${scorecard.passed} passed of ${scorecard.seen} seen`} />
+        <StatCard label="Invested" value={scorecard.invested} sub={scorecard.seen > 0 ? Math.round(scorecard.invested / scorecard.seen * 100) + '% of seen' : ''} color="text-emerald-500" />
+        <StatCard label="Seen → DD+" value={scorecard.seenToDD + '%'} sub="Conversion rate" />
+        {scorecard.judgmentAccuracy !== null && (
+          <StatCard label="Rating Accuracy" value={scorecard.judgmentAccuracy + '%'} sub="High-rated → DD/IC/Invest" color={scorecard.judgmentAccuracy >= 50 ? 'text-emerald-500' : 'text-amber-500'} />
+        )}
+      </div>
+
+      {/* Funnel Conversion */}
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
+        <h3 className="font-semibold text-[var(--text-primary)] mb-4">Decision Funnel</h3>
+        <div className="flex items-center justify-between gap-2">
+          <FunnelStep label="Seen" value={scorecard.seen} />
+          <FunnelArrow pct={scorecard.seenToDD} />
+          <FunnelStep label="DD+" value={scorecard.dd + scorecard.ic + scorecard.invested} />
+          <FunnelArrow pct={scorecard.ddToIC} />
+          <FunnelStep label="IC+" value={scorecard.ic + scorecard.invested} />
+          <FunnelArrow pct={scorecard.icToInvested} />
+          <FunnelStep label="Invested" value={scorecard.invested} highlight />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Rating vs Outcome Chart */}
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
+          <h3 className="font-semibold text-[var(--text-primary)] mb-1">Rating vs Outcome</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">How initial ratings correlate with what happened</p>
+          <div className="h-64">
+            <Bar
+              data={{
+                labels: ratingBuckets,
+                datasets: [
+                  { label: 'Invested', data: investedByRating, backgroundColor: 'rgba(16, 185, 129, 0.7)', borderRadius: 3 },
+                  { label: 'Passed', data: passedByRating, backgroundColor: 'rgba(156, 163, 175, 0.5)', borderRadius: 3 },
+                  { label: 'Missed', data: missedByRating, backgroundColor: 'rgba(239, 68, 68, 0.5)', borderRadius: 3 },
+                ]
+              }}
+              options={{
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, font: { size: 11 }, color: 'var(--text-tertiary)' } } },
+                scales: {
+                  x: { stacked: true, ticks: { color: 'var(--text-tertiary)' }, grid: { display: false }, title: { display: true, text: 'Initial Rating', color: 'var(--text-tertiary)', font: { size: 11 } } },
+                  y: { stacked: true, ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { color: 'var(--border-subtle)' } }
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Average Rating by Outcome */}
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
+          <h3 className="font-semibold text-[var(--text-primary)] mb-1">Avg Rating by Outcome</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">Are we rating future winners higher?</p>
+          <div className="space-y-3">
+            {Object.entries(scorecard.avgRatingByOutcome)
+              .sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]))
+              .map(([outcome, avg]) => {
+                const pct = (parseFloat(avg) / 10) * 100;
+                return (
+                  <div key={outcome}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-[12px] px-2 py-0.5 rounded font-medium ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>{outcome}</span>
+                      <span className="text-[13px] font-semibold text-[var(--text-primary)]">{avg}/10</span>
+                    </div>
+                    <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                      <div className="h-full bg-[var(--rrw-red)] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+
+      {/* Pattern Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
+          <h3 className="font-semibold text-[var(--text-primary)] mb-1">Passes by Region</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">Where are you saying no most?</p>
+          <div className="space-y-2">
+            {Object.entries(scorecard.passedByRegion)
+              .sort((a, b) => b[1] - a[1])
+              .map(([region, count]) => {
+                const regionTotal = attioDeals.filter(d => d.filterRegion === region).length;
+                const pct = regionTotal > 0 ? Math.round(count / regionTotal * 100) : 0;
+                return (
+                  <div key={region} className="flex items-center justify-between">
+                    <span className="text-[13px] text-[var(--text-secondary)]">{region}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-24 h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                        <div className="h-full bg-[var(--rrw-red)] rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[11px] text-[var(--text-quaternary)] w-16 text-right">{count} ({pct}%)</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
+          <h3 className="font-semibold text-[var(--text-primary)] mb-1">Passes by Stage</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">At which stages are you passing?</p>
+          <div className="space-y-2">
+            {Object.entries(scorecard.passedByStage)
+              .sort((a, b) => b[1] - a[1])
+              .map(([stage, count]) => {
+                const stageTotal = attioDeals.filter(d => d.stage === stage).length;
+                const pct = stageTotal > 0 ? Math.round(count / stageTotal * 100) : 0;
+                return (
+                  <div key={stage} className="flex items-center justify-between">
+                    <span className="text-[13px] text-[var(--text-secondary)]">{stage}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-24 h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[11px] text-[var(--text-quaternary)] w-16 text-right">{count} ({pct}%)</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+
+      {/* High-conviction misses */}
+      {scorecard.highConvictionMisses.length > 0 && (
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
+          <h3 className="font-semibold text-[var(--text-primary)] mb-1">High-Conviction Misses</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">Deals rated 6+ that you passed on or missed — your best learning opportunities</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {scorecard.highConvictionMisses
+              .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+              .slice(0, 9)
+              .map(deal => (
+                <div key={deal.id} className="p-3 border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors">
+                  <div className="flex items-center gap-2 mb-2">
+                    {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)]" />}
+                    <span className="font-medium text-[var(--text-primary)] text-[13px] truncate">{deal.company}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${OUTCOME_STYLES[deal.outcome]}`}>{deal.outcome}</span>
+                      {deal.amount > 0 && <span className="text-[11px] text-[var(--text-tertiary)]">€{deal.amount}M</span>}
+                    </div>
+                    <span className="text-[13px] font-semibold text-amber-500">{deal.rating}/10</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Shared Components ────────────────────────────────────
+
 function FilterSelect({ label, value, onChange, options }) {
   return (
     <div>
@@ -539,9 +879,7 @@ function FilterSelect({ label, value, onChange, options }) {
         onChange={(e) => onChange(e.target.value)}
         className="h-9 px-3 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-md text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--rrw-red)] transition-colors"
       >
-        {options.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
+        {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
       </select>
     </div>
   );
@@ -552,15 +890,10 @@ function DealRow({ deal, onClick }) {
   const outcomeStyle = OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
 
   return (
-    <div
-      className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors"
-      onClick={onClick}
-    >
+    <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors" onClick={onClick}>
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          {deal.logoUrl && (
-            <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />
-          )}
+          {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />}
           <span className="font-medium text-[var(--text-primary)] truncate">{deal.dealName || deal.company}</span>
           <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country}</span>
         </div>
@@ -584,17 +917,92 @@ function DealRow({ deal, onClick }) {
   );
 }
 
-function CoverageCard({ region, data }) {
-  const coverageColor = data.coverage >= 80 ? 'text-emerald-500' :
-                        data.coverage >= 60 ? 'text-amber-500' : 'text-red-500';
+function ShadowDealRow({ deal, onClick }) {
+  const outcomeStyle = OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
+  const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
 
+  return (
+    <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors" onClick={onClick}>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-5 h-5 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />}
+          <span className="font-medium text-[var(--text-primary)] truncate">{deal.company}</span>
+          <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-[11px] px-2 py-0.5 rounded font-medium shrink-0 ${outcomeStyle}`}>{deal.outcome}</span>
+          <RegretBadge score={deal.regretScore} />
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px]">
+          {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M raised</span>}
+          <span className="text-[var(--text-quaternary)]">{deal.stage}</span>
+          <span className="text-[var(--text-quaternary)]">{formatMonth(deal.announcedDate) || deal.date}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {deal.timeAgo !== null && (
+            <span className="text-[11px] text-[var(--text-quaternary)]">
+              {deal.timeAgo <= 1 ? 'This month' : deal.timeAgo < 12 ? `${deal.timeAgo}mo ago` : `${Math.round(deal.timeAgo / 12)}y ago`}
+            </span>
+          )}
+          <span className={`font-semibold text-[13px] ${ratingColor} min-w-[36px] text-right`}>
+            {deal.rating ? deal.rating + '/10' : '—'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegretBadge({ score }) {
+  const color = score >= 7 ? 'bg-red-500/10 text-red-500' :
+                score >= 4 ? 'bg-amber-500/10 text-amber-500' :
+                'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
+  return (
+    <span className={`text-[11px] px-1.5 py-0.5 rounded font-semibold ${color}`}>
+      {typeof score === 'number' ? (Number.isInteger(score) ? score : score.toFixed(1)) : score}/10
+    </span>
+  );
+}
+
+function StatCard({ label, value, sub, color }) {
+  return (
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
+      <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{label}</div>
+      <div className={`text-2xl font-bold ${color || 'text-[var(--text-primary)]'}`}>{value}</div>
+      {sub && <div className="text-[11px] text-[var(--text-quaternary)] mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function FunnelStep({ label, value, highlight }) {
+  return (
+    <div className={`flex-1 p-4 rounded-lg text-center ${highlight ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-[var(--bg-tertiary)]'}`}>
+      <div className={`text-2xl font-bold ${highlight ? 'text-emerald-500' : 'text-[var(--text-primary)]'}`}>{value}</div>
+      <div className="text-[11px] text-[var(--text-tertiary)] mt-1">{label}</div>
+    </div>
+  );
+}
+
+function FunnelArrow({ pct }) {
+  return (
+    <div className="flex flex-col items-center px-1 shrink-0">
+      <span className="text-[11px] font-semibold text-[var(--rrw-red)]">{pct}%</span>
+      <svg className="w-5 h-5 text-[var(--text-quaternary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+      </svg>
+    </div>
+  );
+}
+
+function CoverageCard({ region, data }) {
+  const coverageColor = data.coverage >= 80 ? 'text-emerald-500' : data.coverage >= 60 ? 'text-amber-500' : 'text-red-500';
   return (
     <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
       <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{region}</div>
       <div className={`text-xl font-bold ${coverageColor}`}>{data.coverage}%</div>
-      <div className="text-[11px] text-[var(--text-quaternary)]">
-        {data.seen}/{data.total} seen
-      </div>
+      <div className="text-[11px] text-[var(--text-quaternary)]">{data.seen}/{data.total} seen</div>
     </div>
   );
 }
@@ -605,10 +1013,7 @@ function PieCard({ title, labels, data, colors, options }) {
       <h4 className="text-[13px] font-medium text-[var(--text-primary)] mb-3">{title}</h4>
       <div className="h-40">
         <Pie
-          data={{
-            labels,
-            datasets: [{ data, backgroundColor: colors || chartColors.colors }]
-          }}
+          data={{ labels, datasets: [{ data, backgroundColor: colors || chartColors.colors }] }}
           options={options}
         />
       </div>
@@ -622,5 +1027,69 @@ function InfoCard({ label, value, highlight }) {
       <div className="text-[11px] text-[var(--text-tertiary)] mb-0.5">{label}</div>
       <div className={`font-medium ${highlight ? 'text-emerald-500' : 'text-[var(--text-primary)]'}`}>{value}</div>
     </div>
+  );
+}
+
+function DealModal({ deal, onClose }) {
+  if (!deal) return null;
+  return (
+    <Modal isOpen={!!deal} onClose={onClose}>
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-3">
+            {deal.logoUrl && (
+              <img src={deal.logoUrl} alt={deal.company} className="w-12 h-12 rounded-lg object-contain bg-[var(--bg-tertiary)]" />
+            )}
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">{deal.dealName || deal.company}</h2>
+              <p className="text-[13px] text-[var(--text-secondary)]">
+                {deal.country}{deal.amount > 0 ? ` · €${deal.amount}M` : ''}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {deal.description && (
+          <p className="text-[13px] text-[var(--text-secondary)] mb-4">{deal.description}</p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <InfoCard label="Quarter" value={deal.date} />
+          <InfoCard label="Outcome" value={deal.outcome} highlight={deal.outcome === 'Invested' || deal.outcome === 'IC'} />
+          <InfoCard label="Attio Status" value={deal.status || '—'} />
+          <InfoCard label="Rating" value={deal.rating ? deal.rating + '/10' : 'Not rated'} highlight={deal.rating >= 7} />
+          <InfoCard label="Total Funding" value={deal.totalFunding || '—'} />
+          <InfoCard label="Team Size" value={deal.employeeRange || '—'} />
+          {deal.regretScore !== undefined && (
+            <InfoCard label="Regret Score" value={deal.regretScore + '/10'} highlight={deal.regretScore <= 3} />
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 mb-4">
+          <span className={`px-2.5 py-1 rounded text-[12px] font-medium ${deal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+            {deal.seen ? 'Seen' : 'Missed'}
+          </span>
+          {deal.receivedDate && (
+            <span className="text-[12px] text-[var(--text-tertiary)]">Received {formatMonth(deal.receivedDate)}</span>
+          )}
+        </div>
+
+        {deal.industry?.length > 0 && (
+          <div className="mb-4">
+            <div className="text-[11px] text-[var(--text-tertiary)] mb-2">Industries</div>
+            <div className="flex flex-wrap gap-2">
+              {deal.industry.map((tag, i) => (
+                <span key={i} className="px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-[11px] rounded">{tag}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

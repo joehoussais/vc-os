@@ -14,7 +14,7 @@ import Portfolio from './pages/Portfolio';
 
 function AppContent() {
   const { user, loading, login, logout, error } = useAuth();
-  const [activeTab, setActiveTab] = useState('sourcing');
+  const [activeTab, setActiveTab] = useState('coverage');
   const [toast, setToast] = useState({ show: false, message: '' });
 
   // Persistent state
@@ -54,7 +54,7 @@ function AppContent() {
     switch (activeTab) {
       case 'lp-pipeline':
         return <LPPipeline />;
-      case 'sourcing':
+      case 'coverage':
         return <Sourcing />;
       case 'deal-funnel':
         return <DealFunnel />;
