@@ -356,32 +356,35 @@ export default function LPPipeline() {
 
           <div className="py-3">
             {funnelData.stages.map((stage, index) => {
-              const maxWidth = 95;
-              const minWidth = 25;
+              // Progressive narrowing — like the Deal Flow pipeline
               const activeStages = funnelData.stages.filter(s => s.id !== 'declined');
-              const maxAmount = Math.max(...activeStages.map(s => s.totalAmount), 1);
-
-              // Width based on amount (bigger amount = wider bar)
+              const activeIndex = activeStages.findIndex(s => s.id === stage.id);
+              const maxWidth = 95;
+              const minWidth = 30;
               let width;
               if (stage.id === 'declined') {
-                width = 30; // Fixed narrow width for declined
+                width = 30;
               } else {
-                const ratio = stage.totalAmount / maxAmount;
-                width = minWidth + (maxWidth - minWidth) * ratio;
+                const widthStep = (maxWidth - minWidth) / Math.max(activeStages.length - 1, 1);
+                width = maxWidth - (widthStep * activeIndex);
               }
 
               const isDeclined = stage.id === 'declined';
               const isCommitted = stage.id === 'oral_agreement' || stage.id === 'second_closing_agreement';
 
+              // Conversion rate from previous active stage
+              const prevActiveStage = activeIndex > 0 ? activeStages[activeIndex - 1] : null;
+              const prevStageData = prevActiveStage ? funnelData.stages.find(s => s.id === prevActiveStage.id) : null;
+              const conversionRate = prevStageData && prevStageData.count > 0
+                ? Math.round((stage.count / prevStageData.count) * 100) : null;
+
               return (
                 <div key={stage.id}>
-                  {index > 0 && !isDeclined && (
+                  {index > 0 && !isDeclined && conversionRate !== null && (
                     <div className="flex items-center justify-center gap-3 py-1 text-[11px]">
-                      <div className="h-px flex-1 max-w-[40px]" style={{ backgroundColor: 'var(--border-default)' }} />
-                      <span className="text-[var(--text-quaternary)]">
-                        {stage.weight > 0 ? `${Math.round(stage.weight * 100)}% weight` : ''}
-                      </span>
-                      <div className="h-px flex-1 max-w-[40px]" style={{ backgroundColor: 'var(--border-default)' }} />
+                      <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                      <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{conversionRate}%</span>
+                      <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                     </div>
                   )}
 
@@ -395,7 +398,7 @@ export default function LPPipeline() {
 
                   <div
                     onClick={() => setSelectedStage(selectedStage === stage.id ? null : stage.id)}
-                    className={`mx-auto mb-1 py-3 px-5 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${
+                    className={`mx-auto mb-1 py-2.5 px-5 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${
                       selectedStage === stage.id
                         ? 'border-[var(--rrw-red)] bg-[var(--rrw-red-subtle)]'
                         : isDeclined
