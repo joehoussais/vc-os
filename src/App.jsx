@@ -18,7 +18,6 @@ function AppContent() {
   const [toast, setToast] = useState({ show: false, message: '' });
 
   // Persistent state
-  const [dealState, setDealState] = useLocalStorage('dealState', {});
   const [meetingRatings, setMeetingRatings] = useLocalStorage('meetingRatings', {});
 
   const showToast = (message) => {
@@ -56,13 +55,7 @@ function AppContent() {
       case 'lp-pipeline':
         return <LPPipeline />;
       case 'sourcing':
-        return (
-          <Sourcing
-            dealState={dealState}
-            setDealState={setDealState}
-            showToast={showToast}
-          />
-        );
+        return <Sourcing />;
       case 'deal-funnel':
         return <DealFunnel />;
       case 'deal-analysis':
@@ -76,7 +69,7 @@ function AppContent() {
       case 'portfolio':
         return <Portfolio />;
       default:
-        return <Sourcing dealState={dealState} setDealState={setDealState} showToast={showToast} />;
+        return <Sourcing />;
     }
   };
 

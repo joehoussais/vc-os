@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
-import { chartColors, calculateCoverageByCountry } from '../data/attioData';
+import { chartColors } from '../data/attioData';
 import { useAttioDeals } from '../hooks/useAttioDeals';
 import { useTheme } from '../hooks/useTheme.jsx';
 import Modal from '../components/Modal';
@@ -24,7 +24,35 @@ function formatMonth(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-export default function Sourcing({ dealState, setDealState, showToast }) {
+// Calculate coverage by region from deals
+function calculateCoverageByRegion(deals) {
+  const regions = ['France', 'Germany', 'Nordics', 'Southern Europe', 'Eastern Europe', 'Other'];
+  const result = {};
+  for (const region of regions) {
+    const regionDeals = deals.filter(d => d.filterRegion === region);
+    const seen = regionDeals.filter(d => d.seen);
+    result[region] = {
+      total: regionDeals.length,
+      seen: seen.length,
+      coverage: regionDeals.length > 0 ? Math.round((seen.length / regionDeals.length) * 100) : 0,
+    };
+  }
+  return result;
+}
+
+// Outcome badge colors
+const OUTCOME_STYLES = {
+  'Invested': 'bg-emerald-500/10 text-emerald-500',
+  'IC': 'bg-blue-500/10 text-blue-500',
+  'DD': 'bg-blue-500/10 text-blue-500',
+  'In Pipeline': 'bg-amber-500/10 text-amber-500',
+  'Saw': 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
+  'Tracked': 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]',
+  'Passed': 'bg-[var(--bg-hover)] text-[var(--text-secondary)]',
+  'Missed': 'bg-red-500/10 text-red-500',
+};
+
+export default function Sourcing() {
   const { deals: attioDeals, loading: attioLoading, error: attioError, isLive } = useAttioDeals();
   const { theme } = useTheme();
 
@@ -53,24 +81,15 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
   const effectiveFrom = filters.from || 'Q1 2021';
   const effectiveTo = filters.to || 'Q1 2026';
 
-  // Merge local state with Attio data
-  const deals = useMemo(() => {
-    return attioDeals.map(d => ({
-      ...d,
-      inScope: dealState[d.id]?.inScope ?? d.inScope,
-      seen: dealState[d.id]?.seen ?? d.seen
-    }));
-  }, [dealState, attioDeals]);
-
   // Apply filters including date range
   const filteredDeals = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    return deals.filter(d => {
+    return attioDeals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
-      if (filters.show === 'in-scope' && !d.inScope) return false;
-      if (filters.show === 'unseen' && (!d.inScope || d.seen)) return false;
+      if (filters.show === 'seen' && !d.seen) return false;
+      if (filters.show === 'missed' && d.seen) return false;
       if (d.date) {
         const dNum = quarterToNum(d.date);
         if (dNum < fromNum || dNum > toNum) return false;
@@ -79,13 +98,13 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     }).sort((a, b) => {
       return new Date(b.announcedDate) - new Date(a.announcedDate);
     });
-  }, [deals, filters, effectiveFrom, effectiveTo]);
+  }, [attioDeals, filters, effectiveFrom, effectiveTo]);
 
   // Calculate coverage stats (also respects date range)
   const stats = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
-    const filtered = deals.filter(d => {
+    const filtered = attioDeals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (d.date) {
@@ -94,43 +113,34 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       }
       return true;
     });
-    const inScopeCount = filtered.filter(d => d.inScope).length;
-    const seenCount = filtered.filter(d => d.inScope && d.seen).length;
-    const coverage = inScopeCount > 0 ? Math.round((seenCount / inScopeCount) * 100) : 0;
-    return { total: filtered.length, inScope: inScopeCount, seen: seenCount, coverage };
-  }, [deals, filters, effectiveFrom, effectiveTo]);
+    const seenCount = filtered.filter(d => d.seen).length;
+    const coverage = filtered.length > 0 ? Math.round((seenCount / filtered.length) * 100) : 0;
+    return { total: filtered.length, seen: seenCount, coverage };
+  }, [attioDeals, filters, effectiveFrom, effectiveTo]);
 
-  // Calculate coverage by country for pie chart
-  const coverageByCountry = useMemo(() => calculateCoverageByCountry(deals), [deals]);
+  // Calculate coverage by region
+  const coverageByRegion = useMemo(() => calculateCoverageByRegion(attioDeals), [attioDeals]);
 
   // Calculate pie chart data
   const pieData = useMemo(() => {
     const stageData = {};
-    deals.forEach(d => {
+    const outcomeData = {};
+    attioDeals.forEach(d => {
       stageData[d.stage] = (stageData[d.stage] || 0) + 1;
+      outcomeData[d.outcome] = (outcomeData[d.outcome] || 0) + 1;
     });
-
-    return { stageData };
-  }, [deals]);
-
-  const toggleDealState = (dealId, field) => {
-    const deal = deals.find(d => d.id === dealId);
-    const current = dealState[dealId] || { inScope: deal.inScope, seen: deal.seen };
-    const newState = { ...current, [field]: !current[field] };
-    setDealState({ ...dealState, [dealId]: newState });
-    showToast(`Updated ${field === 'inScope' ? 'scope' : 'seen'} status`);
-  };
+    return { stageData, outcomeData };
+  }, [attioDeals]);
 
   // Compute per-quarter stats from real deal data across the full selected range
   const quarterlyData = useMemo(() => {
     // Group deals by quarter
     const byQ = {};
-    deals.forEach(d => {
+    attioDeals.forEach(d => {
       if (!d.date) return;
-      if (!byQ[d.date]) byQ[d.date] = { total: 0, inScope: 0, seen: 0 };
+      if (!byQ[d.date]) byQ[d.date] = { total: 0, seen: 0 };
       byQ[d.date].total++;
-      if (d.inScope) byQ[d.date].inScope++;
-      if (d.inScope && d.seen) byQ[d.date].seen++;
+      if (d.seen) byQ[d.date].seen++;
     });
 
     // Use ALL quarters in range, not just those with data
@@ -142,9 +152,9 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
     });
 
     const labels = filtered;
-    const inScopeCounts = filtered.map(q => (byQ[q]?.inScope || 0));
+    const dealCounts = filtered.map(q => (byQ[q]?.total || 0));
     const coverageRates = filtered.map(q =>
-      byQ[q]?.inScope > 0 ? Math.round((byQ[q].seen / byQ[q].inScope) * 100) : 0
+      byQ[q]?.total > 0 ? Math.round((byQ[q].seen / byQ[q].total) * 100) : 0
     );
 
     // Trailing 4-quarter average on coverage
@@ -154,8 +164,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       return Math.round(slice.reduce((a, b) => a + b, 0) / slice.length);
     });
 
-    return { labels, inScopeCounts, coverageRates, trailing };
-  }, [deals, effectiveFrom, effectiveTo, allQuarters]);
+    return { labels, dealCounts, coverageRates, trailing };
+  }, [attioDeals, effectiveFrom, effectiveTo, allQuarters]);
 
   const chartOptions = {
     responsive: true,
@@ -275,13 +285,13 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             onChange={(v) => setFilters({ ...filters, show: v })}
             options={[
               { value: 'all', label: 'All Deals' },
-              { value: 'in-scope', label: 'In Scope Only' },
-              { value: 'unseen', label: 'Unseen Only' },
+              { value: 'seen', label: 'Seen Only' },
+              { value: 'missed', label: 'Missed Only' },
             ]}
           />
           <div className="ml-auto flex items-center gap-4 text-[13px]">
             <span className="text-[var(--text-tertiary)]">
-              {stats.total} deals · {stats.inScope} in scope
+              {stats.total} deals · {stats.seen} seen
             </span>
             <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">
               {stats.coverage}% coverage
@@ -311,8 +321,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                 datasets: [
                   {
                     type: 'bar',
-                    label: 'In-scope deals',
-                    data: quarterlyData.inScopeCounts,
+                    label: 'Deals tracked',
+                    data: quarterlyData.dealCounts,
                     backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                     borderRadius: 3,
                     yAxisID: 'y1',
@@ -357,7 +367,7 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             <div>
               <h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3>
               <p className="text-xs text-[var(--text-tertiary)]">
-                {filteredDeals.length} deals shown · Mark as seen to update coverage
+                {filteredDeals.length} deals · derived from Attio deal & company status
               </p>
             </div>
             <span className={`px-2 py-1 rounded text-[11px] font-medium ${
@@ -378,7 +388,6 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                 <DealRow
                   key={deal.id}
                   deal={deal}
-                  onToggle={toggleDealState}
                   onClick={() => setSelectedDeal(deal)}
                 />
               ))
@@ -387,11 +396,11 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
         </div>
       </div>
 
-      {/* Coverage by Country */}
+      {/* Coverage by Region */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
         <h3 className="font-semibold text-[var(--text-primary)] mb-4">Coverage by Region</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {Object.entries(coverageByCountry).map(([region, data]) => (
+          {Object.entries(coverageByRegion).map(([region, data]) => (
             <CoverageCard key={region} region={region} data={data} />
           ))}
         </div>
@@ -406,8 +415,8 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <PieCard
           title="Dealflow by region"
-          labels={Object.keys(coverageByCountry)}
-          data={Object.values(coverageByCountry).map(v => v.total)}
+          labels={Object.keys(coverageByRegion)}
+          data={Object.values(coverageByRegion).map(v => v.total)}
           options={pieOptions}
         />
         <PieCard
@@ -417,44 +426,34 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
           options={pieOptions}
         />
         <PieCard
-          title="Coverage breakdown"
-          labels={['Seen (In Scope)', 'Not Seen (In Scope)', 'Out of Scope']}
-          data={[
-            deals.filter(d => d.inScope && d.seen).length,
-            deals.filter(d => d.inScope && !d.seen).length,
-            deals.filter(d => !d.inScope).length,
-          ]}
-          colors={[chartColors.rrwRed, '#6B7280', '#D1D5DB']}
+          title="Outcome breakdown"
+          labels={Object.keys(pieData.outcomeData)}
+          data={Object.values(pieData.outcomeData)}
           options={pieOptions}
         />
       </div>
 
-      {/* Cold Outreach */}
+      {/* Outcome Summary */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="font-semibold text-[var(--text-primary)]">Cold Outreach Effectiveness</h3>
-            <p className="text-xs text-[var(--text-tertiary)]">Tracking proactive emails → coverage impact</p>
+            <h3 className="font-semibold text-[var(--text-primary)]">Outcome Summary</h3>
+            <p className="text-xs text-[var(--text-tertiary)]">How deals were handled · derived from Attio status</p>
           </div>
-          <span className="px-2 py-1 rounded text-[11px] font-medium bg-blue-500/10 text-blue-500">Slack MCP</span>
         </div>
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] text-[var(--text-tertiary)] uppercase border-b border-[var(--border-default)]">
-              <th className="pb-3 font-medium">Team Member</th>
-              <th className="pb-3 font-medium">Emails Sent</th>
-              <th className="pb-3 font-medium">Responses</th>
-              <th className="pb-3 font-medium">Meetings</th>
-              <th className="pb-3 font-medium">Coverage Impact</th>
-            </tr>
-          </thead>
-          <tbody className="text-[var(--text-primary)]">
-            <OutreachRow name="Joseph" sent={45} responses="12 (27%)" meetings={8} impact="+3.2%" />
-            <OutreachRow name="Chloe" sent={62} responses="18 (29%)" meetings={11} impact="+4.1%" />
-            <OutreachRow name="Olivier" sent={38} responses="14 (37%)" meetings={9} impact="+2.8%" />
-            <OutreachRow name="Total" sent={145} responses="44 (30%)" meetings={28} impact="+10.1%" isTotal />
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          {Object.entries(pieData.outcomeData).sort((a, b) => b[1] - a[1]).map(([outcome, count]) => (
+            <div key={outcome} className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
+              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>
+                {outcome}
+              </span>
+              <div className="text-xl font-bold text-[var(--text-primary)]">{count}</div>
+              <div className="text-[11px] text-[var(--text-quaternary)]">
+                {attioDeals.length > 0 ? Math.round((count / attioDeals.length) * 100) : 0}%
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Modal */}
@@ -491,16 +490,28 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
             )}
 
             <div className="grid grid-cols-2 gap-3 mb-6">
-              <InfoCard label="Announced" value={selectedDeal.date} />
+              <InfoCard label="Quarter" value={selectedDeal.date} />
+              <InfoCard label="Outcome" value={selectedDeal.outcome} highlight={selectedDeal.outcome === 'Invested' || selectedDeal.outcome === 'IC'} />
+              <InfoCard label="Attio Status" value={selectedDeal.status || '—'} />
+              <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
               <InfoCard label="Total Funding" value={selectedDeal.totalFunding || '—'} />
               <InfoCard label="Team Size" value={selectedDeal.employeeRange || '—'} />
-              <InfoCard label="Rating" value={selectedDeal.rating ? selectedDeal.rating + '/10' : 'Not rated'} highlight={selectedDeal.rating >= 7} />
-              <InfoCard label="Outcome" value={selectedDeal.outcome} />
-              <InfoCard label="Status" value={selectedDeal.status || '—'} />
+            </div>
+
+            {/* Seen/Coverage status */}
+            <div className="flex items-center gap-3 mb-4">
+              <span className={`px-2.5 py-1 rounded text-[12px] font-medium ${selectedDeal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                {selectedDeal.seen ? 'Seen' : 'Missed'}
+              </span>
+              {selectedDeal.receivedDate && (
+                <span className="text-[12px] text-[var(--text-tertiary)]">
+                  Received {formatMonth(selectedDeal.receivedDate)}
+                </span>
+              )}
             </div>
 
             {selectedDeal.industry?.length > 0 && (
-              <div className="mb-6">
+              <div className="mb-4">
                 <div className="text-[11px] text-[var(--text-tertiary)] mb-2">Industries</div>
                 <div className="flex flex-wrap gap-2">
                   {selectedDeal.industry.map((tag, i) => (
@@ -511,31 +522,6 @@ export default function Sourcing({ dealState, setDealState, showToast }) {
                 </div>
               </div>
             )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  toggleDealState(selectedDeal.id, 'seen');
-                  setSelectedDeal({ ...selectedDeal, seen: !selectedDeal.seen });
-                }}
-                className={`flex-1 h-10 font-medium rounded-lg transition-colors ${
-                  selectedDeal.seen
-                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-                    : 'bg-[var(--rrw-red)] hover:bg-[var(--rrw-red-hover)] text-white'
-                }`}
-              >
-                {selectedDeal.seen ? 'Mark as Not Seen' : 'Mark as Seen'}
-              </button>
-              <button
-                onClick={() => {
-                  toggleDealState(selectedDeal.id, 'inScope');
-                  setSelectedDeal({ ...selectedDeal, inScope: !selectedDeal.inScope });
-                }}
-                className="flex-1 h-10 bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-medium rounded-lg transition-colors"
-              >
-                {selectedDeal.inScope ? 'Mark Out of Scope' : 'Mark In Scope'}
-              </button>
-            </div>
           </div>
         )}
       </Modal>
@@ -561,11 +547,9 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-function DealRow({ deal, onToggle, onClick }) {
+function DealRow({ deal, onClick }) {
   const ratingColor = deal.rating >= 7 ? 'text-emerald-500' : deal.rating >= 4 ? 'text-amber-500' : deal.rating ? 'text-red-500' : 'text-[var(--text-quaternary)]';
-  const outcomeStyle = deal.outcome === 'DD' || deal.outcome === 'IC' ? 'bg-blue-500/10 text-blue-500' :
-                       deal.outcome === 'Missed' ? 'bg-red-500/10 text-red-500' :
-                       deal.outcome === 'Passed' ? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]' : 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
+  const outcomeStyle = OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]';
 
   return (
     <div
@@ -587,36 +571,15 @@ function DealRow({ deal, onToggle, onClick }) {
           {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>}
           <span className="text-[var(--text-quaternary)]">{formatMonth(deal.announcedDate) || deal.date}</span>
         </div>
-        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={deal.inScope} onChange={() => onToggle(deal.id, 'inScope')} label="Scope" />
-          <Checkbox checked={deal.seen} onChange={() => onToggle(deal.id, 'seen')} label="Seen" />
+        <div className="flex items-center gap-3">
+          <span className={`text-[11px] px-1.5 py-0.5 rounded ${deal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-400'}`}>
+            {deal.seen ? 'Seen' : 'Missed'}
+          </span>
           <span className={`font-semibold text-[13px] ${ratingColor} min-w-[36px] text-right`}>
             {deal.rating ? deal.rating + '/10' : '—'}
           </span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Checkbox({ checked, onChange, label }) {
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={onChange}
-        className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
-          checked
-            ? 'bg-[var(--rrw-red)] border-[var(--rrw-red)]'
-            : 'border-[var(--border-strong)] hover:border-[var(--rrw-red)]'
-        }`}
-      >
-        {checked && (
-          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        )}
-      </button>
-      <span className="text-[11px] text-[var(--text-tertiary)]">{label}</span>
     </div>
   );
 }
@@ -630,7 +593,7 @@ function CoverageCard({ region, data }) {
       <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{region}</div>
       <div className={`text-xl font-bold ${coverageColor}`}>{data.coverage}%</div>
       <div className="text-[11px] text-[var(--text-quaternary)]">
-        {data.seen}/{data.inScope} seen
+        {data.seen}/{data.total} seen
       </div>
     </div>
   );
@@ -650,18 +613,6 @@ function PieCard({ title, labels, data, colors, options }) {
         />
       </div>
     </div>
-  );
-}
-
-function OutreachRow({ name, sent, responses, meetings, impact, isTotal }) {
-  return (
-    <tr className={`border-b border-[var(--border-subtle)] ${isTotal ? 'font-semibold' : ''}`}>
-      <td className="py-3">{name}</td>
-      <td className="py-3">{sent}</td>
-      <td className="py-3">{responses}</td>
-      <td className="py-3">{meetings}</td>
-      <td className="py-3"><span className="text-emerald-500 font-medium">{impact}</span></td>
-    </tr>
   );
 }
 

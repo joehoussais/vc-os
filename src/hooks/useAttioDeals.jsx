@@ -74,6 +74,11 @@ export function useAttioDeals() {
       const dealName = getAttrValue(deal, 'deal_id');       // "Series A - Thorizon"
       const status = getAttrValue(deal, 'status');           // "Announced deals we saw" (from status.title)
       const announcedDate = getAttrValue(deal, 'announced_date'); // "2025-03-12"
+      const receivedDate = getAttrValue(deal, 'received_date');   // "2020-12-21"
+      const createdAt = getAttrValue(deal, 'created_at');         // timestamp fallback
+
+      // Use best available date: announced_date > received_date > created_at
+      const bestDate = announcedDate || receivedDate || (createdAt ? createdAt.slice(0, 10) : null);
 
       // Get linked company via record-reference
       const companyRecordId = getAttrValue(deal, 'associated_company_domain'); // target_record_id UUID
@@ -93,30 +98,65 @@ export function useAttioDeals() {
       const stageFromCompany = company ? fundingStatusToStage[getAttrValue(company, 'last_funding_status_46')] : null;
       const stage = stageFromDeal || stageFromCompany || 'Unknown';
 
-      // Deal Coverage list data (in_scope, received, amount)
+      // Derive in_scope and seen directly from deal status + company status
+      // All deals are in scope (they're in your deal tracking system)
+      // "deal flow" = you received the deal (seen)
+      // "Announced deals we saw" = you saw the announcement (seen)
+      // "announced" = market deal you tracked (may or may not have seen)
+      // "deal rumors" = heard about it (seen)
+      const companyStatus = company ? getAttrValue(company, 'status_4') : null;
+
+      // In scope = all deals are in scope (they exist in your pipeline)
+      // But also check coverage list for manual overrides
       const coverage = coverageMap[dealRecordId];
-      const inScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
-      const seen = coverage ? !!getEntryValue(coverage, 'received') : false;
+      const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
+      const coverageReceived = coverage ? !!getEntryValue(coverage, 'received') : false;
+
+      // Derive "seen" from deal status and company status
+      const statusSeen = status === 'deal flow' ||
+                          status === 'Announced deals we saw' ||
+                          status === 'deal rumors';
+
+      // Also check if the company has progressed past initial contact
+      const companyProgressed = companyStatus && [
+        'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
+        'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
+        'Passed', 'Analysed but too early', 'To Decline'
+      ].includes(companyStatus);
+
+      // A deal is "seen" if any of these are true
+      const seen = statusSeen || companyProgressed || coverageReceived || !!receivedDate;
+
+      // All deals in Attio are in scope (you're tracking them)
+      const inScope = true;
+
+      // Amount
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
       const amount = coverageAmount != null ? Math.round(coverageAmount / 1000000) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
-      // Outcome
-      const companyStatus = company ? getAttrValue(company, 'status_4') : null;
+      // Outcome — derived from company status
       let outcome = 'Missed';
       if (seen) {
-        if (companyStatus === 'Passed') outcome = 'Passed';
+        if (companyStatus === 'Passed' || companyStatus === 'To Decline' || companyStatus === 'Analysed but too early' || companyStatus === 'No US path for now') outcome = 'Passed';
         else if (companyStatus === 'Due Dilligence' || companyStatus === 'Due Diligence') outcome = 'DD';
         else if (companyStatus === 'IC') outcome = 'IC';
         else if (companyStatus === 'Portfolio') outcome = 'Invested';
-        else outcome = '—';
+        else if (status === 'deal flow') outcome = 'In Pipeline';
+        else if (status === 'Announced deals we saw') outcome = 'Saw';
+        else outcome = 'Tracked';
       }
 
       // Industry / categories (multi-select)
-      const categories = company ? getAttrValues(company, 'categories') : [];
+      const dealIndustry = getAttrValues(deal, 'industry');
+      const categories = dealIndustry.length > 0 ? dealIndustry : (company ? getAttrValues(company, 'categories') : []);
 
       // Feeling / rating
       const feeling = company ? getAttrValue(company, 'feeling') : null;
+
+      // Owner
+      const ownerAttr = deal.values?.owner;
+      const ownerIds = ownerAttr ? ownerAttr.map(o => o.referenced_actor_id).filter(Boolean) : [];
 
       return {
         id: dealRecordId,
@@ -127,8 +167,8 @@ export function useAttioDeals() {
         countryCode,
         stage,
         amount,
-        date: dateToQuarter(announcedDate),
-        announcedDate,
+        date: dateToQuarter(bestDate),
+        announcedDate: bestDate,
         inScope,
         seen,
         status,
@@ -136,13 +176,15 @@ export function useAttioDeals() {
         rating: feeling ? feeling * 2 : null,
         dealScore,
         outcome,
+        ownerIds,
+        receivedDate,
         logoUrl: company ? getAttrValue(company, 'logo_url') : null,
         description: company ? getAttrValue(company, 'description') : null,
         linkedinUrl: company ? getAttrValue(company, 'linkedin') : null,
         totalFunding: company ? getAttrValue(company, 'total_funding_amount') : null,
         employeeRange: company ? getAttrValue(company, 'employee_range') : null,
       };
-    }).filter(deal => deal.announcedDate);
+    }).filter(deal => deal.date); // Only need a quarter (now uses bestDate fallback)
   }, []);
 
   useEffect(() => {
