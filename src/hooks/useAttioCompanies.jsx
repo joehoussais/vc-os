@@ -31,7 +31,7 @@ const STATUS_TO_FUNNEL = {
 export const FUNNEL_STAGES = [
   { id: 'universe', name: 'Sourcing Universe', description: 'All startups in the database' },
   { id: 'qualified', name: 'Qualified', description: 'Owner assigned — actively being worked' },
-  { id: 'contacted', name: 'Contact Initiated', description: 'Outreach made via any channel', split: true },
+  { id: 'contacted', name: 'Contact Established', description: 'Contact established through one of our channels', split: true },
   { id: 'met', name: 'First Meeting', description: 'First meeting held' },
   { id: 'dealflow', name: 'Deal Flow', description: 'Active fundraising round — deck received' },
   { id: 'analysis', name: 'In-Depth Analysis', description: 'Deep-dive due diligence underway' },
