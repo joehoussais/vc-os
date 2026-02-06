@@ -29,6 +29,7 @@ export default async (req) => {
       '/objects/deals_2/records/query',
       '/objects/companies/records/query',
       '/lists/deal_coverage_6/entries/query',
+      '/objects/people/records/query',
     ];
 
     if (!allowedEndpoints.includes(endpoint)) {

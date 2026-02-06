@@ -72,6 +72,28 @@ export async function fetchCompaniesByIds(companyIds) {
   return allRecords;
 }
 
+// Fetch all companies (startups) with pagination — for deal funnel
+export async function fetchAllCompanies() {
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = {
+      filter: {
+        "type": { "$eq": "Startup" }
+      },
+      limit: 100,
+    };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/companies/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  return allRecords;
+}
+
 // Fetch all entries from the Deal Coverage list (has in_scope, received, amount)
 export async function fetchListEntries() {
   let allEntries = [];
