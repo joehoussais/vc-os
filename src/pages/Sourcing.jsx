@@ -227,19 +227,22 @@ export default function Sourcing() {
     return { labels, dealCounts, coverageRates, trailing };
   }, [attioDeals, effectiveFrom, effectiveTo, allQuarters]);
 
-  // ─── Shadow Portfolio — Objective scoring ──────────────
+  // ─── Shadow Portfolio — ONLY deals we saw, analysed, and passed on ──
+  // This is NOT about deals we missed. Those belong in Coverage.
+  // Shadow = we had a thesis, we made a prediction, we said no.
+  // Now the market tells us if we were right.
   const shadowPortfolio = useMemo(() => {
     return attioDeals
-      .filter(d => d.outcome === 'Passed' || d.outcome === 'Missed')
+      .filter(d => d.outcome === 'Passed') // Only passed — we actively decided "no"
       .map(d => {
         const companyKey = (d.company || '').toLowerCase().trim();
         const callData = callRatingsMap[companyKey];
         return {
           ...d,
           marketScore: computeMarketScore(d),
-          ourCallRating: callData?.avgRating || null,
+          ourCallRating: callData?.avgRating || d.rating || null,
           callCount: callData?.meetings?.length || 0,
-          passReason: PASS_REASONS[d.status] || (d.outcome === 'Missed' ? 'Never saw this deal' : 'Passed'),
+          passReason: PASS_REASONS[d.status] || 'Reviewed and passed',
           timeAgo: monthsAgo(d.announcedDate),
         };
       })
@@ -429,15 +432,15 @@ function OverviewTab({ attioDeals, filteredDeals, filters, setFilters, effective
 // ─── Shadow Portfolio Tab — REBUILT ───────────────────────
 
 function ShadowPortfolioTab({ shadowPortfolio, attioDeals, setSelectedDeal }) {
-  const [shadowFilter, setShadowFilter] = useState('all');
   const [sortBy, setSortBy] = useState('market'); // market | amount | rating | date
+  const [shadowFilter, setShadowFilter] = useState('all'); // all | wrong | right | tbd
   const [expandedDeal, setExpandedDeal] = useState(null);
 
   const filtered = useMemo(() => {
     let list = shadowPortfolio;
-    if (shadowFilter === 'passed') list = list.filter(d => d.outcome === 'Passed');
-    if (shadowFilter === 'missed') list = list.filter(d => d.outcome === 'Missed');
-    if (shadowFilter === 'high') list = list.filter(d => d.marketScore >= 6);
+    if (shadowFilter === 'wrong') list = list.filter(d => d.marketScore >= 6);
+    if (shadowFilter === 'right') list = list.filter(d => d.marketScore <= 2);
+    if (shadowFilter === 'tbd') list = list.filter(d => d.marketScore > 2 && d.marketScore < 6);
 
     if (sortBy === 'amount') return [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
     if (sortBy === 'rating') return [...list].sort((a, b) => (b.ourCallRating || 0) - (a.ourCallRating || 0));
@@ -445,48 +448,48 @@ function ShadowPortfolioTab({ shadowPortfolio, attioDeals, setSelectedDeal }) {
     return list; // market score is default sort
   }, [shadowPortfolio, shadowFilter, sortBy]);
 
-  const passedCount = shadowPortfolio.filter(d => d.outcome === 'Passed').length;
-  const missedCount = shadowPortfolio.filter(d => d.outcome === 'Missed').length;
-  const highMarket = shadowPortfolio.filter(d => d.marketScore >= 6).length;
+  const wrongCount = shadowPortfolio.filter(d => d.marketScore >= 6).length;
+  const rightCount = shadowPortfolio.filter(d => d.marketScore <= 2).length;
+  const tbdCount = shadowPortfolio.filter(d => d.marketScore > 2 && d.marketScore < 6).length;
   const avgMarket = shadowPortfolio.length > 0
     ? (shadowPortfolio.reduce((sum, d) => sum + d.marketScore, 0) / shadowPortfolio.length).toFixed(1) : '0';
 
-  // False negatives: we passed but market score is high (we were WRONG)
-  const falseNegatives = shadowPortfolio.filter(d => d.outcome === 'Passed' && d.marketScore >= 6);
-  // True negatives: we passed and market score is low (we were RIGHT)
-  const trueNegatives = shadowPortfolio.filter(d => d.outcome === 'Passed' && d.marketScore <= 2);
+  // Average of our call ratings across all shadow deals
+  const ratedShadow = shadowPortfolio.filter(d => d.ourCallRating);
+  const avgOurRating = ratedShadow.length > 0
+    ? (ratedShadow.reduce((sum, d) => sum + d.ourCallRating, 0) / ratedShadow.length).toFixed(1) : null;
 
   return (
     <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-        <StatCard label="Shadow Deals" value={shadowPortfolio.length} sub={`${passedCount} passed · ${missedCount} never saw`} />
-        <StatCard label="Avg Market Score" value={avgMarket + '/10'} sub="Objective outcome signal" />
-        <StatCard label="Breakout Deals" value={highMarket} sub="Market score 6+" color="text-red-500" />
-        <StatCard label="False Negatives" value={falseNegatives.length} sub="Passed but succeeded" color="text-red-500" />
-        <StatCard label="True Negatives" value={trueNegatives.length} sub="Passed, didn't work" color="text-emerald-500" />
+        <StatCard label="Deals Passed" value={shadowPortfolio.length} sub="We saw, analysed, and said no" />
+        <StatCard label="We Were Wrong" value={wrongCount} sub="They raised $30M+ after" color="text-red-500" />
+        <StatCard label="We Were Right" value={rightCount} sub="No significant follow-on" color="text-emerald-500" />
+        <StatCard label="Too Early to Tell" value={tbdCount} sub="Outcome still developing" />
+        {avgOurRating && <StatCard label="Our Avg Call Rating" value={avgOurRating + '/10'} sub={`vs ${avgMarket}/10 market avg`} />}
+        {!avgOurRating && <StatCard label="Avg Market Score" value={avgMarket + '/10'} sub="Objective outcome" />}
       </div>
 
-      {/* How scoring works */}
+      {/* How it works */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-start gap-6 text-[11px] text-[var(--text-tertiary)]">
-          <div><span className="font-semibold text-[var(--text-secondary)]">Market Score</span> = objective outcome. Did they raise? With whom? How much?</div>
+          <div><span className="font-semibold text-[var(--text-secondary)]">Market Score</span> = what happened after we passed. Pure facts, no opinions.</div>
           <div className="flex items-center gap-3 shrink-0">
-            <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-semibold">10</span> <span>Unicorn/IPO</span>
+            <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-semibold">10</span> <span>Unicorn</span>
             <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-semibold">8</span> <span>$100M+</span>
             <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold">6</span> <span>$30M+</span>
-            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] font-semibold">4</span> <span>$10M+</span>
-            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] font-semibold">2</span> <span>Some</span>
-            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-semibold">0</span> <span>None</span>
+            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] font-semibold">2-4</span> <span>Some raise</span>
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-semibold">0</span> <span>Nothing</span>
           </div>
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Filter + Sort Bar */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
-          <FilterSelect label="Show" value={shadowFilter} onChange={setShadowFilter}
-            options={[{ value: 'all', label: 'All Shadow Deals' }, { value: 'passed', label: 'Passed Only' }, { value: 'missed', label: 'Never Saw' }, { value: 'high', label: 'Breakouts Only (6+)' }]} />
+          <FilterSelect label="Verdict" value={shadowFilter} onChange={setShadowFilter}
+            options={[{ value: 'all', label: 'All Passes' }, { value: 'wrong', label: 'We Were Wrong' }, { value: 'right', label: 'We Were Right' }, { value: 'tbd', label: 'Too Early to Tell' }]} />
           <FilterSelect label="Sort by" value={sortBy} onChange={setSortBy}
             options={[{ value: 'market', label: 'Market Score' }, { value: 'amount', label: 'Amount Raised' }, { value: 'rating', label: 'Our Call Rating' }, { value: 'date', label: 'Most Recent' }]} />
           <div className="ml-auto text-[13px] text-[var(--text-tertiary)]">{filtered.length} deals</div>
@@ -518,10 +521,10 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
                       deal.marketScore >= 4 ? 'text-[var(--text-secondary)] bg-[var(--bg-tertiary)]' :
                       'text-emerald-500 bg-emerald-500/10';
 
-  // Determine verdict
-  const isWrong = deal.outcome === 'Passed' && deal.marketScore >= 6;
-  const isRight = deal.outcome === 'Passed' && deal.marketScore <= 2;
-  const neverSaw = deal.outcome === 'Missed';
+  // Determine verdict — all shadow deals are Passed
+  const isWrong = deal.marketScore >= 6;
+  const isRight = deal.marketScore <= 2;
+  const isTBD = !isWrong && !isRight;
 
   // Truth: what actually happened
   const truthLines = [];
@@ -532,7 +535,7 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
 
   return (
     <div className={`bg-[var(--bg-primary)] border rounded-lg overflow-hidden transition-all ${
-      isWrong ? 'border-red-500/30' : isRight ? 'border-emerald-500/20' : 'border-[var(--border-default)]'
+      isWrong ? 'border-red-500/30' : isRight ? 'border-emerald-500/20' : isTBD ? 'border-[var(--border-default)]' : 'border-[var(--border-default)]'
     }`}>
       {/* Header Row — always visible */}
       <div className="p-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors" onClick={onToggle}>
@@ -567,8 +570,7 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
             {/* Verdict badge */}
             {isWrong && <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-500/10 text-red-500">Wrong</span>}
             {isRight && <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-500">Right</span>}
-            {neverSaw && <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-500">Blind spot</span>}
-            {!isWrong && !isRight && !neverSaw && <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]">TBD</span>}
+            {isTBD && <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]">TBD</span>}
             {/* Expand arrow */}
             <svg className={`w-4 h-4 text-[var(--text-quaternary)] transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -625,33 +627,22 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
             <div className={`p-3 rounded-lg border ${
               isWrong ? 'bg-red-500/5 border-red-500/20' :
               isRight ? 'bg-emerald-500/5 border-emerald-500/20' :
-              neverSaw ? 'bg-amber-500/5 border-amber-500/20' :
               'bg-[var(--bg-secondary)] border-[var(--border-subtle)]'
             }`}>
               <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Learning</div>
               {isWrong && (
                 <div className="text-[13px] text-red-500 font-medium mb-1">
-                  We were wrong.
+                  We were wrong. They went on to raise significantly.
                 </div>
               )}
               {isRight && (
                 <div className="text-[13px] text-emerald-500 font-medium mb-1">
-                  Good pass — confirmed.
+                  Good pass — confirmed by market.
                 </div>
               )}
-              {neverSaw && deal.marketScore >= 6 && (
-                <div className="text-[13px] text-amber-500 font-medium mb-1">
-                  Coverage gap — never saw this deal.
-                </div>
-              )}
-              {neverSaw && deal.marketScore < 6 && (
+              {isTBD && (
                 <div className="text-[13px] text-[var(--text-secondary)] mb-1">
-                  Didn't see it, but outcome was modest.
-                </div>
-              )}
-              {!isWrong && !isRight && !neverSaw && (
-                <div className="text-[13px] text-[var(--text-secondary)] mb-1">
-                  Outcome still developing.
+                  Outcome still developing. Check back later.
                 </div>
               )}
               {/* Delta between our call and market */}
