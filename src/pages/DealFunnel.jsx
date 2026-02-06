@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useAttioCompanies, FUNNEL_STAGES } from '../hooks/useAttioCompanies';
-import { useTheme } from '../hooks/useTheme.jsx';
+import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS } from '../hooks/useAttioCompanies';
 
 // Team members for the owner filter
 const TEAM_MEMBERS = [
@@ -33,14 +32,13 @@ function FilterSelect({ label, value, onChange, options }) {
 
 export default function DealFunnel() {
   const { companies, loading, error, isLive } = useAttioCompanies();
-  const { theme } = useTheme();
 
   const [filters, setFilters] = useState({
     owner: 'all',
     region: 'all',
+    sourceFilter: 'all', // 'all' = blended view, or a specific source channel id
   });
   const [selectedStage, setSelectedStage] = useState(null);
-  const [expandedStage, setExpandedStage] = useState(null);
 
   // Get unique regions for filter
   const regions = useMemo(() => {
@@ -49,7 +47,7 @@ export default function DealFunnel() {
     return ['all', ...Array.from(set).sort()];
   }, [companies]);
 
-  // Filter companies
+  // Filter companies by owner & region
   const filtered = useMemo(() => {
     return companies.filter(c => {
       if (filters.owner !== 'all' && !c.ownerIds.includes(filters.owner)) return false;
@@ -58,14 +56,13 @@ export default function DealFunnel() {
     });
   }, [companies, filters]);
 
-  // Compute funnel counts — each stage is CUMULATIVE (a company in "portfolio" also counts in all earlier stages)
-  // But for a proper funnel, we count how many reached EACH stage or beyond
+  // Build funnel data
   const funnelData = useMemo(() => {
     const stageOrder = FUNNEL_STAGES.map(s => s.id);
     const stageIndex = {};
     stageOrder.forEach((id, i) => { stageIndex[id] = i; });
 
-    // Count companies at each stage or beyond
+    // Cumulative counts, per-stage companies, growth scores
     const counts = {};
     const companiesByStage = {};
     const growthScores = {};
@@ -76,21 +73,47 @@ export default function DealFunnel() {
       growthScores[id] = [];
     });
 
+    // Source breakdown for 'contacted' stage
+    const sourceBreakdown = {};
+    SOURCE_CHANNELS.forEach(ch => {
+      sourceBreakdown[ch.id] = { count: 0, companies: [], growthScores: [] };
+    });
+
+    // Also track source breakdown for stages BEYOND contacted (for per-source sub-funnels)
+    const sourceByStage = {};
+    stageOrder.forEach(stageId => {
+      sourceByStage[stageId] = {};
+      SOURCE_CHANNELS.forEach(ch => {
+        sourceByStage[stageId][ch.id] = 0;
+      });
+    });
+
     filtered.forEach(c => {
       const idx = stageIndex[c.funnelStage];
       if (idx === undefined) return;
 
-      // The company appears at its current stage
+      // Company appears at its current stage
       companiesByStage[c.funnelStage].push(c);
       if (c.growthScore != null) growthScores[c.funnelStage].push(c.growthScore);
 
-      // For cumulative funnel: count at this stage AND all earlier stages
+      // Cumulative: count at this stage and all earlier
       for (let i = 0; i <= idx; i++) {
         counts[stageOrder[i]]++;
+        // Track source at every stage for sub-funnel views
+        sourceByStage[stageOrder[i]][c.source]++;
+      }
+
+      // Source breakdown at 'contacted' level (companies that reached contacted or beyond)
+      if (idx >= stageIndex['contacted']) {
+        sourceBreakdown[c.source].count++;
+        if (c.funnelStage === 'contacted') {
+          sourceBreakdown[c.source].companies.push(c);
+          if (c.growthScore != null) sourceBreakdown[c.source].growthScores.push(c.growthScore);
+        }
       }
     });
 
-    // Compute averages and conversion rates
+    // Build stage objects
     const stages = FUNNEL_STAGES.map((stage, i) => {
       const count = counts[stage.id];
       const stageCompanies = companiesByStage[stage.id];
@@ -106,7 +129,7 @@ export default function DealFunnel() {
       return {
         ...stage,
         count,
-        stageCount: stageCompanies.length, // companies exactly at this stage
+        stageCount: stageCompanies.length,
         avgGrowthScore: avgGrowth,
         conversionRate,
         dropoffRate,
@@ -114,12 +137,50 @@ export default function DealFunnel() {
       };
     });
 
+    // Build source sub-funnel data: for each source, show conversion through stages
+    const sourceSubFunnels = SOURCE_CHANNELS.map(ch => {
+      const contactedCount = sourceBreakdown[ch.id].count;
+      if (contactedCount === 0) return { ...ch, stages: [], contactedCount: 0 };
+
+      // For each stage from 'contacted' onward, show count for this source
+      const subStages = stageOrder
+        .filter((_, i) => i >= stageIndex['contacted'])
+        .map((stageId, i, arr) => {
+          const cnt = sourceByStage[stageId][ch.id];
+          const prevCnt = i > 0 ? sourceByStage[arr[i - 1]][ch.id] : counts['qualified'];
+          const rate = prevCnt > 0 ? Math.round((cnt / prevCnt) * 100) : 0;
+          return {
+            id: stageId,
+            name: FUNNEL_STAGES.find(s => s.id === stageId)?.name || stageId,
+            count: cnt,
+            conversionRate: rate,
+          };
+        });
+
+      return {
+        ...ch,
+        contactedCount,
+        avgGrowthScore: sourceBreakdown[ch.id].growthScores.length > 0
+          ? Math.round((sourceBreakdown[ch.id].growthScores.reduce((a, b) => a + b, 0) / sourceBreakdown[ch.id].growthScores.length) * 10) / 10
+          : null,
+        // Conversion from qualified → this source's contacted
+        qualifiedToContactRate: counts['qualified'] > 0 ? Math.round((contactedCount / counts['qualified']) * 100) : 0,
+        stages: subStages,
+      };
+    }).filter(ch => ch.contactedCount > 0);
+
     const overallConversion = counts.universe > 0
       ? ((counts.portfolio / counts.universe) * 100).toFixed(2)
       : '0.00';
 
-    return { stages, overallConversion, counts };
+    return { stages, overallConversion, counts, sourceBreakdown, sourceSubFunnels, sourceByStage };
   }, [filtered]);
+
+  // If filtering by specific source, compute source-specific funnel
+  const isSourceFiltered = filters.sourceFilter !== 'all';
+  const activeSourceChannel = isSourceFiltered
+    ? SOURCE_CHANNELS.find(ch => ch.id === filters.sourceFilter)
+    : null;
 
   // Conversion metrics for sidebar
   const conversionMetrics = funnelData.stages.slice(1).map((stage, i) => ({
@@ -183,6 +244,18 @@ export default function DealFunnel() {
               label: r === 'all' ? 'All Regions' : r,
             }))}
           />
+          <FilterSelect
+            label="Source"
+            value={filters.sourceFilter}
+            onChange={(v) => setFilters({ ...filters, sourceFilter: v })}
+            options={[
+              { value: 'all', label: 'All Sources (Blended)' },
+              ...SOURCE_CHANNELS.filter(ch => ch.id !== 'unknown').map(ch => ({
+                value: ch.id,
+                label: ch.name,
+              })),
+            ]}
+          />
           <div className="ml-auto text-right">
             <span className="text-xs text-[var(--text-tertiary)] block">Overall conversion</span>
             <span className="text-2xl font-bold text-[var(--rrw-red)]">{funnelData.overallConversion}%</span>
@@ -196,7 +269,9 @@ export default function DealFunnel() {
         <div className="col-span-2 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-semibold text-[var(--text-primary)]">Deal Flow Conversion Funnel</h3>
+              <h3 className="font-semibold text-[var(--text-primary)]">
+                {isSourceFiltered ? `${activeSourceChannel.name} Funnel` : 'Deal Flow Conversion Funnel'}
+              </h3>
               <p className="text-xs text-[var(--text-tertiary)]">Click any stage to see companies</p>
             </div>
           </div>
@@ -208,6 +283,83 @@ export default function DealFunnel() {
               const widthStep = (maxWidth - minWidth) / (funnelData.stages.length - 1);
               const width = maxWidth - (widthStep * index);
 
+              // The "Contact Initiated" stage gets the split view
+              if (stage.split && !isSourceFiltered) {
+                return (
+                  <div key={stage.id}>
+                    {/* Conversion label above */}
+                    <div className="flex items-center justify-center gap-3 py-1.5 text-[var(--text-quaternary)] text-[11px]">
+                      <div className="h-px bg-[var(--border-default)] flex-1 max-w-[60px]" />
+                      <span>{stage.conversionRate}% converted</span>
+                      <div className="h-px bg-[var(--border-default)] flex-1 max-w-[60px]" />
+                    </div>
+
+                    {/* Split cards for each source */}
+                    <div className="mx-auto mb-1" style={{ width: `${width}%` }}>
+                      <div className="text-center mb-2">
+                        <span className="font-semibold text-[13px] text-[var(--text-primary)]">{stage.name}</span>
+                        <span className="text-[var(--text-tertiary)] text-[13px] ml-2">{stage.count.toLocaleString()}</span>
+                        {stage.avgGrowthScore != null && (
+                          <span className="text-[11px] text-[var(--text-quaternary)] ml-2">
+                            ⌀ {stage.avgGrowthScore}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-5 gap-2">
+                        {SOURCE_CHANNELS.filter(ch => ch.id !== 'unknown').map(channel => {
+                          const subFunnel = funnelData.sourceSubFunnels.find(sf => sf.id === channel.id);
+                          const count = subFunnel?.contactedCount || 0;
+                          const rate = subFunnel?.qualifiedToContactRate || 0;
+                          const avgGrowth = subFunnel?.avgGrowthScore;
+
+                          return (
+                            <div
+                              key={channel.id}
+                              onClick={() => setFilters({ ...filters, sourceFilter: channel.id })}
+                              className="rounded-lg p-3 text-center cursor-pointer transition-all hover:scale-[1.03] hover:shadow-md border border-[var(--border-default)]"
+                              style={{
+                                background: `${channel.color}10`,
+                                borderColor: count > 0 ? `${channel.color}40` : undefined,
+                              }}
+                            >
+                              <div className="text-[11px] font-medium text-[var(--text-tertiary)] mb-1 truncate">
+                                {channel.name}
+                              </div>
+                              <div className="text-lg font-bold" style={{ color: channel.color }}>
+                                {count.toLocaleString()}
+                              </div>
+                              <div className="text-[10px] text-[var(--text-quaternary)]">
+                                {rate}% of qualified
+                              </div>
+                              {avgGrowth != null && (
+                                <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
+                                  ⌀ {avgGrowth}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Unknown source indicator */}
+                      {(() => {
+                        const unknownSub = funnelData.sourceSubFunnels.find(sf => sf.id === 'unknown');
+                        if (!unknownSub || unknownSub.contactedCount === 0) return null;
+                        return (
+                          <div className="text-center mt-2 text-[10px] text-[var(--text-quaternary)]">
+                            {unknownSub.contactedCount.toLocaleString()} with no source set —
+                            <span className="underline cursor-help" title="Add a 'Source' select field to companies in Attio to categorize these">
+                              tag them in Attio
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Regular funnel bar
               return (
                 <div key={stage.id}>
                   {index > 0 && (
@@ -263,8 +415,8 @@ export default function DealFunnel() {
               const rateColor = metric.rate >= 40 ? 'text-emerald-500' : metric.rate >= 20 ? 'text-amber-500' : 'text-red-500';
               return (
                 <div key={i} className="flex justify-between py-3 border-b border-[var(--border-subtle)] last:border-0">
-                  <span className="text-[13px] text-[var(--text-tertiary)]">
-                    {metric.from.split(' ')[0]} → {metric.to.split(' ')[0]}
+                  <span className="text-[12px] text-[var(--text-tertiary)]">
+                    {metric.from} → {metric.to}
                   </span>
                   <span className={`font-semibold ${rateColor}`}>{metric.rate}%</span>
                 </div>
@@ -272,9 +424,40 @@ export default function DealFunnel() {
             })}
           </div>
 
+          {/* Source Conversion Comparison */}
+          {funnelData.sourceSubFunnels.length > 0 && (
+            <div className="border-t border-[var(--border-default)] mt-4 pt-4">
+              <h4 className="font-medium text-[var(--text-secondary)] mb-3">Source → First Meeting</h4>
+              <div className="space-y-2">
+                {funnelData.sourceSubFunnels
+                  .filter(sf => sf.id !== 'unknown')
+                  .sort((a, b) => {
+                    const aToMet = a.stages.find(s => s.id === 'met');
+                    const bToMet = b.stages.find(s => s.id === 'met');
+                    return (bToMet?.conversionRate || 0) - (aToMet?.conversionRate || 0);
+                  })
+                  .map(sf => {
+                    const toMet = sf.stages.find(s => s.id === 'met');
+                    const rate = toMet?.conversionRate || 0;
+                    return (
+                      <div key={sf.id} className="flex items-center justify-between text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sf.color }} />
+                          <span className="text-[var(--text-tertiary)]">{sf.name}</span>
+                        </div>
+                        <span className={`font-semibold ${rate >= 40 ? 'text-emerald-500' : rate >= 20 ? 'text-amber-500' : 'text-red-500'}`}>
+                          {rate}%
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* Growth Score Summary */}
           <div className="border-t border-[var(--border-default)] mt-4 pt-4">
-            <h4 className="font-medium text-[var(--text-secondary)] mb-3">Avg Growth Score by Stage</h4>
+            <h4 className="font-medium text-[var(--text-secondary)] mb-3">Avg Growth Score</h4>
             <div className="space-y-2">
               {funnelData.stages.filter(s => s.avgGrowthScore != null).map(stage => (
                 <div key={stage.id} className="flex justify-between items-center text-[13px]">
@@ -385,6 +568,15 @@ export default function DealFunnel() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
+                        {company.source !== 'unknown' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded"
+                            style={{
+                              backgroundColor: `${SOURCE_CHANNELS.find(ch => ch.id === company.source)?.color || '#9CA3AF'}15`,
+                              color: SOURCE_CHANNELS.find(ch => ch.id === company.source)?.color || '#9CA3AF',
+                            }}>
+                            {SOURCE_CHANNELS.find(ch => ch.id === company.source)?.name}
+                          </span>
+                        )}
                         {company.growthScore != null && (
                           <span className="text-[12px] font-semibold text-[var(--text-secondary)]">
                             {company.growthScore.toFixed(0)}

@@ -31,13 +31,39 @@ const STATUS_TO_FUNNEL = {
 export const FUNNEL_STAGES = [
   { id: 'universe', name: 'Sourcing Universe', description: 'All startups in the database' },
   { id: 'qualified', name: 'Qualified', description: 'Owner assigned — actively being worked' },
-  { id: 'contacted', name: 'Contacted', description: 'Email sent or introduction made' },
-  { id: 'met', name: 'Met', description: 'First meeting held' },
+  { id: 'contacted', name: 'Contact Initiated', description: 'Outreach made via any channel', split: true },
+  { id: 'met', name: 'First Meeting', description: 'First meeting held' },
   { id: 'dealflow', name: 'Deal Flow', description: 'Active fundraising round — deck received' },
   { id: 'analysis', name: 'In-Depth Analysis', description: 'Deep-dive due diligence underway' },
   { id: 'committee', name: 'Committee (IC)', description: 'Presented to Investment Committee' },
   { id: 'portfolio', name: 'Portfolio', description: 'Investment made' },
 ];
+
+// Source channels for the contact-initiated split
+export const SOURCE_CHANNELS = [
+  { id: 'cold_email', name: 'Cold Email', color: '#3B82F6' },
+  { id: 'vc_intro', name: 'VC Intro', color: '#8B5CF6' },
+  { id: 'banker', name: 'Banker', color: '#F59E0B' },
+  { id: 'other_intro', name: 'Other Intro', color: '#10B981' },
+  { id: 'cold_outreach', name: 'Cold Outreach', color: '#6366F1' },
+  { id: 'unknown', name: 'Unknown', color: '#9CA3AF' },
+];
+
+// Map Attio source field values to our channel IDs
+const SOURCE_VALUE_MAP = {
+  'Cold Email': 'cold_email',
+  'cold_email': 'cold_email',
+  'VC Introduction': 'vc_intro',
+  'VC Intro': 'vc_intro',
+  'vc_intro': 'vc_intro',
+  'Banker': 'banker',
+  'banker': 'banker',
+  'Other Introduction': 'other_intro',
+  'Other Intro': 'other_intro',
+  'other_intro': 'other_intro',
+  'Cold Outreach': 'cold_outreach',
+  'cold_outreach': 'cold_outreach',
+};
 
 // Country code to region mapping (for filters)
 const countryToFilterRegion = {
@@ -126,6 +152,10 @@ export function useAttioCompanies() {
       // Feeling
       const feeling = getAttrValue(company, 'feeling');
 
+      // Source channel (will be populated once the 'source' field is created in Attio)
+      const rawSource = getAttrValue(company, 'source');
+      const source = rawSource ? (SOURCE_VALUE_MAP[rawSource] || 'unknown') : 'unknown';
+
       return {
         id: recordId,
         name,
@@ -137,6 +167,7 @@ export function useAttioCompanies() {
         countryCode,
         region,
         growthScore: growthScore ? parseFloat(growthScore) : null,
+        source,
         createdAt,
         logoUrl,
         industry,
