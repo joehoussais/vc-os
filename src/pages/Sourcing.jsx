@@ -153,8 +153,11 @@ export default function Sourcing() {
 
   const allQuarters = useMemo(() => {
     const quarters = [];
-    for (let year = 2021; year <= 2026; year++) {
-      const maxQ = year === 2026 ? 1 : 4;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentQ = Math.ceil((now.getMonth() + 1) / 3);
+    for (let year = 2020; year <= currentYear; year++) {
+      const maxQ = year === currentYear ? currentQ : 4;
       for (let q = 1; q <= maxQ; q++) quarters.push(`Q${q} ${year}`);
     }
     return quarters;
@@ -163,8 +166,8 @@ export default function Sourcing() {
   const [filters, setFilters] = useState({ country: 'all', stage: 'all', from: '', to: '', show: 'all' });
   const [selectedDeal, setSelectedDeal] = useState(null);
 
-  const effectiveFrom = filters.from || 'Q1 2021';
-  const effectiveTo = filters.to || 'Q1 2026';
+  const effectiveFrom = filters.from || 'Q1 2020';
+  const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
 
   const filteredDeals = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
@@ -174,9 +177,10 @@ export default function Sourcing() {
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (filters.show === 'seen' && !d.seen) return false;
       if (filters.show === 'missed' && d.seen) return false;
+      // Include deals without dates, filter by quarter only if deal has one
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
-    }).sort((a, b) => new Date(b.announcedDate) - new Date(a.announcedDate));
+    }).sort((a, b) => new Date(b.announcedDate || 0) - new Date(a.announcedDate || 0));
   }, [attioDeals, filters, effectiveFrom, effectiveTo]);
 
   const stats = useMemo(() => {

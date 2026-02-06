@@ -106,18 +106,16 @@ export function useAttioDeals() {
       // "deal rumors" = heard about it (seen)
       const companyStatus = company ? getAttrValue(company, 'status_4') : null;
 
-      // In scope = all deals are in scope (they exist in your pipeline)
-      // But also check coverage list for manual overrides
+      // Coverage list data — the source of truth for in_scope and received (seen)
       const coverage = coverageMap[dealRecordId];
       const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
       const coverageReceived = coverage ? !!getEntryValue(coverage, 'received') : false;
 
-      // Derive "seen" from deal status and company status
+      // Derive "seen" from multiple signals (coverage list is primary)
       const statusSeen = status === 'deal flow' ||
                           status === 'Announced deals we saw' ||
                           status === 'deal rumors';
 
-      // Also check if the company has progressed past initial contact
       const companyProgressed = companyStatus && [
         'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
         'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
@@ -125,14 +123,14 @@ export function useAttioDeals() {
       ].includes(companyStatus);
 
       // A deal is "seen" if any of these are true
-      const seen = statusSeen || companyProgressed || coverageReceived || !!receivedDate;
+      const seen = coverageReceived || statusSeen || companyProgressed || !!receivedDate;
 
-      // All deals in Attio are in scope (you're tracking them)
-      const inScope = true;
+      // In scope from coverage list — defaults to true if not in list (all tracked deals are in scope)
+      const inScope = coverage ? coverageInScope : true;
 
-      // Amount
+      // Amount — coverage list stores in M€ already, don't divide again
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
-      const amount = coverageAmount != null ? Math.round(coverageAmount / 1000000) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
+      const amount = coverageAmount != null ? Math.round(coverageAmount) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
       // Outcome — derived from company status
@@ -198,7 +196,7 @@ export function useAttioDeals() {
         lastFundingStatus,
         lastFundingDate,
       };
-    }).filter(deal => deal.date); // Only need a quarter (now uses bestDate fallback)
+    }).filter(Boolean); // processRawDeals always returns a deal object
   }, []);
 
   useEffect(() => {
