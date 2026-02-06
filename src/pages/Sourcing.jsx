@@ -6,6 +6,7 @@ import { useAttioDeals } from '../hooks/useAttioDeals';
 import { updateListEntry } from '../services/attioApi';
 import { useTheme } from '../hooks/useTheme.jsx';
 import { granolaMeetings } from '../data/mockData';
+import { SHADOW_PORTFOLIO } from '../data/shadowPortfolio';
 import Modal from '../components/Modal';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend);
@@ -478,7 +479,7 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
             <div><h3 className="font-semibold text-[var(--text-primary)]">Deal Coverage</h3><p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} deals</p></div>
           </div>
           <div className="flex items-center gap-3 text-[10px] text-[var(--text-quaternary)] mb-2 px-3">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-emerald-500/40 inline-block" /> Received</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Seen</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-blue-500/40 inline-block" /> In Scope</span>
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
@@ -521,52 +522,48 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
   );
 }
 
-// ─── Shadow Portfolio Tab — REBUILT ───────────────────────
+// ─── Shadow Portfolio Tab — Hard-coded deep analysis ─────
 
-function ShadowPortfolioTab({ shadowPortfolio, attioDeals, setSelectedDeal }) {
-  const [sortBy, setSortBy] = useState('market'); // market | amount | rating | date
-  const [shadowFilter, setShadowFilter] = useState('all'); // all | wrong | right | tbd
+function ShadowPortfolioTab({ shadowPortfolio: _unused, attioDeals, setSelectedDeal }) {
+  const [sortBy, setSortBy] = useState('market'); // market | feeling | date
+  const [shadowFilter, setShadowFilter] = useState('all'); // all | wrong | right | tbd | active
   const [expandedDeal, setExpandedDeal] = useState(null);
 
   const filtered = useMemo(() => {
-    let list = shadowPortfolio;
-    if (shadowFilter === 'wrong') list = list.filter(d => d.marketScore >= 6);
-    if (shadowFilter === 'right') list = list.filter(d => d.marketScore <= 2);
-    if (shadowFilter === 'tbd') list = list.filter(d => d.marketScore > 2 && d.marketScore < 6);
+    let list = SHADOW_PORTFOLIO;
+    if (shadowFilter === 'wrong') list = list.filter(d => d.verdict === 'wrong');
+    if (shadowFilter === 'right') list = list.filter(d => d.verdict === 'right');
+    if (shadowFilter === 'tbd') list = list.filter(d => d.verdict === 'tbd');
+    if (shadowFilter === 'active') list = list.filter(d => d.verdict === 'active');
 
-    if (sortBy === 'amount') return [...list].sort((a, b) => (b.amount || 0) - (a.amount || 0));
-    if (sortBy === 'rating') return [...list].sort((a, b) => (b.ourCallRating || 0) - (a.ourCallRating || 0));
-    if (sortBy === 'date') return [...list].sort((a, b) => new Date(b.announcedDate) - new Date(a.announcedDate));
-    return list; // market score is default sort
-  }, [shadowPortfolio, shadowFilter, sortBy]);
+    if (sortBy === 'feeling') return [...list].sort((a, b) => (b.ourFeeling || 0) - (a.ourFeeling || 0));
+    if (sortBy === 'date') return [...list].sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
+    if (sortBy === 'funding') return [...list].sort((a, b) => (b.totalFunding || 0) - (a.totalFunding || 0));
+    return [...list].sort((a, b) => b.marketScore - a.marketScore);
+  }, [shadowFilter, sortBy]);
 
-  const wrongCount = shadowPortfolio.filter(d => d.marketScore >= 6).length;
-  const rightCount = shadowPortfolio.filter(d => d.marketScore <= 2).length;
-  const tbdCount = shadowPortfolio.filter(d => d.marketScore > 2 && d.marketScore < 6).length;
-  const avgMarket = shadowPortfolio.length > 0
-    ? (shadowPortfolio.reduce((sum, d) => sum + d.marketScore, 0) / shadowPortfolio.length).toFixed(1) : '0';
-
-  // Average of our call ratings across all shadow deals
-  const ratedShadow = shadowPortfolio.filter(d => d.ourCallRating);
-  const avgOurRating = ratedShadow.length > 0
-    ? (ratedShadow.reduce((sum, d) => sum + d.ourCallRating, 0) / ratedShadow.length).toFixed(1) : null;
+  const wrongCount = SHADOW_PORTFOLIO.filter(d => d.verdict === 'wrong').length;
+  const rightCount = SHADOW_PORTFOLIO.filter(d => d.verdict === 'right').length;
+  const tbdCount = SHADOW_PORTFOLIO.filter(d => d.verdict === 'tbd').length;
+  const activeCount = SHADOW_PORTFOLIO.filter(d => d.verdict === 'active').length;
+  const avgMarket = (SHADOW_PORTFOLIO.reduce((sum, d) => sum + d.marketScore, 0) / SHADOW_PORTFOLIO.length).toFixed(1);
+  const avgFeeling = (SHADOW_PORTFOLIO.reduce((sum, d) => sum + (d.ourFeeling || 0), 0) / SHADOW_PORTFOLIO.length).toFixed(1);
 
   return (
     <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-        <StatCard label="Deals Passed" value={shadowPortfolio.length} sub="We saw, analysed, and said no" />
-        <StatCard label="We Were Wrong" value={wrongCount} sub="They raised $30M+ after" color="text-red-500" />
-        <StatCard label="We Were Right" value={rightCount} sub="No significant follow-on" color="text-emerald-500" />
+        <StatCard label="Companies Tracked" value={SHADOW_PORTFOLIO.length} sub="Curated shadow portfolio" />
+        <StatCard label="We Were Wrong" value={wrongCount} sub="Raised big after we passed" color="text-red-500" />
+        <StatCard label="We Were Right" value={rightCount} sub="Good pass — confirmed" color="text-emerald-500" />
         <StatCard label="Too Early to Tell" value={tbdCount} sub="Outcome still developing" />
-        {avgOurRating && <StatCard label="Our Avg Call Rating" value={avgOurRating + '/10'} sub={`vs ${avgMarket}/10 market avg`} />}
-        {!avgOurRating && <StatCard label="Avg Market Score" value={avgMarket + '/10'} sub="Objective outcome" />}
+        <StatCard label="Calibration" value={`${avgFeeling} → ${avgMarket}`} sub="Our feeling vs market outcome" />
       </div>
 
       {/* How it works */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-start gap-6 text-[11px] text-[var(--text-tertiary)]">
-          <div><span className="font-semibold text-[var(--text-secondary)]">Market Score</span> = what happened after we passed. Pure facts, no opinions.</div>
+          <div><span className="font-semibold text-[var(--text-secondary)]">Shadow Portfolio</span> = companies we saw, analysed, and passed on. Now the market tells us if we were right. AI-assisted analysis from Attio data & team discussions.</div>
           <div className="flex items-center gap-3 shrink-0">
             <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-semibold">10</span> <span>Unicorn</span>
             <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-semibold">8</span> <span>$100M+</span>
@@ -581,17 +578,17 @@ function ShadowPortfolioTab({ shadowPortfolio, attioDeals, setSelectedDeal }) {
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
           <FilterSelect label="Verdict" value={shadowFilter} onChange={setShadowFilter}
-            options={[{ value: 'all', label: 'All Passes' }, { value: 'wrong', label: 'We Were Wrong' }, { value: 'right', label: 'We Were Right' }, { value: 'tbd', label: 'Too Early to Tell' }]} />
+            options={[{ value: 'all', label: 'All Companies' }, { value: 'wrong', label: 'We Were Wrong' }, { value: 'right', label: 'We Were Right' }, { value: 'tbd', label: 'Too Early to Tell' }, { value: 'active', label: 'Still Pursuing' }]} />
           <FilterSelect label="Sort by" value={sortBy} onChange={setSortBy}
-            options={[{ value: 'market', label: 'Market Score' }, { value: 'amount', label: 'Amount Raised' }, { value: 'rating', label: 'Our Call Rating' }, { value: 'date', label: 'Most Recent' }]} />
-          <div className="ml-auto text-[13px] text-[var(--text-tertiary)]">{filtered.length} deals</div>
+            options={[{ value: 'market', label: 'Market Score' }, { value: 'funding', label: 'Total Funding' }, { value: 'feeling', label: 'Our Feeling' }, { value: 'date', label: 'Most Recent' }]} />
+          <div className="ml-auto text-[13px] text-[var(--text-tertiary)]">{filtered.length} companies</div>
         </div>
       </div>
 
       {/* Deal List with Expandable Cards */}
       <div className="space-y-2 mb-4">
         {filtered.length === 0 ? (
-          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-8 text-center text-[var(--text-tertiary)]">No shadow deals found</div>
+          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-8 text-center text-[var(--text-tertiary)]">No companies match this filter</div>
         ) : filtered.map(deal => (
           <ShadowDealCard
             key={deal.id}
@@ -605,7 +602,7 @@ function ShadowPortfolioTab({ shadowPortfolio, attioDeals, setSelectedDeal }) {
   );
 }
 
-// ─── Shadow Deal Card — the core learning unit ───────────
+// ─── Shadow Deal Card — rich analysis from hard-coded data ──
 
 function ShadowDealCard({ deal, expanded, onToggle }) {
   const marketColor = deal.marketScore >= 8 ? 'text-red-500 bg-red-500/10' :
@@ -613,58 +610,52 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
                       deal.marketScore >= 4 ? 'text-[var(--text-secondary)] bg-[var(--bg-tertiary)]' :
                       'text-emerald-500 bg-emerald-500/10';
 
-  // Determine verdict — all shadow deals are Passed
-  const isWrong = deal.marketScore >= 6;
-  const isRight = deal.marketScore <= 2;
-  const isTBD = !isWrong && !isRight;
+  const feelingColor = deal.ourFeeling >= 8 ? 'text-emerald-500' :
+                       deal.ourFeeling >= 6 ? 'text-amber-500' :
+                       'text-[var(--text-tertiary)]';
 
-  // Truth: what actually happened — all from Attio data
-  const truthLines = [];
-  if (deal.amount > 0) truthLines.push(`Raised €${deal.amount}M`);
-  if (deal.totalFunding) truthLines.push(`Total funding: ${deal.totalFunding}`);
-  if (deal.stage) truthLines.push(`Reached ${deal.stage}`);
-  if (deal.lastFundingStatus) truthLines.push(`Latest round: ${deal.lastFundingStatus.replace(/_/g, ' ')}`);
-  if (deal.lastFundingDate) truthLines.push(`Last funded: ${new Date(deal.lastFundingDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`);
-  if (deal.employeeRange) truthLines.push(`Team: ${deal.employeeRange}`);
+  const verdictConfig = {
+    wrong: { label: 'Wrong', bg: 'bg-red-500/10', text: 'text-red-500', border: 'border-red-500/30' },
+    right: { label: 'Right', bg: 'bg-emerald-500/10', text: 'text-emerald-500', border: 'border-emerald-500/20' },
+    tbd: { label: 'TBD', bg: 'bg-[var(--bg-tertiary)]', text: 'text-[var(--text-quaternary)]', border: 'border-[var(--border-default)]' },
+    active: { label: 'Pursuing', bg: 'bg-blue-500/10', text: 'text-blue-500', border: 'border-blue-500/30' },
+  };
+  const v = verdictConfig[deal.verdict] || verdictConfig.tbd;
+
+  const firstSeenLabel = deal.firstSeen ? new Date(deal.firstSeen).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '';
 
   return (
-    <div className={`bg-[var(--bg-primary)] border rounded-lg overflow-hidden transition-all ${
-      isWrong ? 'border-red-500/30' : isRight ? 'border-emerald-500/20' : isTBD ? 'border-[var(--border-default)]' : 'border-[var(--border-default)]'
-    }`}>
+    <div className={`bg-[var(--bg-primary)] border rounded-lg overflow-hidden transition-all ${v.border}`}>
       {/* Header Row — always visible */}
       <div className="p-3 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors" onClick={onToggle}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-6 h-6 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" />}
+            {deal.logoUrl && <img src={deal.logoUrl} alt="" className="w-7 h-7 rounded object-contain bg-[var(--bg-tertiary)] shrink-0" onError={e => { e.target.style.display = 'none'; }} />}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-[var(--text-primary)] truncate">{deal.company}</span>
-                <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country} · {deal.stage}</span>
+                <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">{deal.country} · {deal.sector}</span>
               </div>
               <div className="text-[11px] text-[var(--text-quaternary)]">
-                {formatMonth(deal.announcedDate)}
-                {deal.amount > 0 && ` · €${deal.amount}M`}
-                {deal.callCount > 0 && ` · ${deal.callCount} call${deal.callCount > 1 ? 's' : ''}`}
+                First seen {firstSeenLabel}
+                {deal.totalFunding > 0 && ` · €${deal.totalFunding}M total raised`}
+                {deal.currentStage && ` · ${deal.currentStage}`}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            {/* Our call rating */}
-            {deal.ourCallRating && (
-              <div className="text-center">
-                <div className="text-[10px] text-[var(--text-quaternary)]">Our call</div>
-                <div className="text-[13px] font-semibold text-[var(--text-primary)]">{deal.ourCallRating}/10</div>
-              </div>
-            )}
+            {/* Our feeling at the time */}
+            <div className="text-center">
+              <div className="text-[10px] text-[var(--text-quaternary)]">Our feel</div>
+              <div className={`text-[13px] font-semibold ${feelingColor}`}>{deal.ourFeeling}/10</div>
+            </div>
             {/* Market score */}
             <div className="text-center">
               <div className="text-[10px] text-[var(--text-quaternary)]">Market</div>
               <div className={`text-[15px] font-bold px-2 py-0.5 rounded ${marketColor}`}>{deal.marketScore}/10</div>
             </div>
             {/* Verdict badge */}
-            {isWrong && <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-500/10 text-red-500">Wrong</span>}
-            {isRight && <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-500">Right</span>}
-            {isTBD && <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]">TBD</span>}
+            <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${v.bg} ${v.text}`}>{v.label}</span>
             {/* Expand arrow */}
             <svg className={`w-4 h-4 text-[var(--text-quaternary)] transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -673,92 +664,91 @@ function ShadowDealCard({ deal, expanded, onToggle }) {
         </div>
       </div>
 
-      {/* Expanded section — Prediction vs Truth vs Learning */}
+      {/* Expanded section — rich 3-column analysis */}
       {expanded && (
         <div className="border-t border-[var(--border-subtle)] p-4">
+          {/* Description */}
+          <div className="text-[13px] text-[var(--text-secondary)] mb-4">{deal.description}</div>
+
+          {/* Tags */}
+          {deal.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {deal.tags.map((tag, i) => (
+                <span key={i} className="px-2 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] text-[10px] rounded-full">{tag}</span>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Our Prediction */}
+            {/* Our Assessment */}
             <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-              <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Our Prediction</div>
-              <div className="text-[13px] text-[var(--text-primary)] mb-2">{deal.passReason}</div>
-              {deal.ourCallRating && (
-                <div className="text-[12px] text-[var(--text-secondary)]">
-                  Avg call rating: <span className="font-semibold">{deal.ourCallRating}/10</span> across {deal.callCount} call{deal.callCount > 1 ? 's' : ''}
+              <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">What We Said</div>
+              <div className="text-[13px] text-[var(--text-primary)] mb-2">{deal.reasonsToPass}</div>
+              {deal.teamDiscussion && (
+                <div className="text-[12px] text-[var(--text-secondary)] mt-2 border-t border-[var(--border-subtle)] pt-2">
+                  <div className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase mb-1">Team Discussion</div>
+                  <div className="italic leading-relaxed">{deal.teamDiscussion}</div>
                 </div>
               )}
-              {deal.rating && (
-                <div className="text-[12px] text-[var(--text-secondary)]">
-                  Deal rating: <span className="font-semibold">{deal.rating}/10</span>
-                </div>
-              )}
-              {!deal.ourCallRating && !deal.rating && (
-                <div className="text-[12px] text-[var(--text-quaternary)] italic">No ratings recorded</div>
-              )}
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[var(--border-subtle)]">
+                <span className="text-[11px] text-[var(--text-quaternary)]">Feeling:</span>
+                <span className={`text-[12px] font-semibold ${feelingColor}`}>{deal.ourFeeling}/10</span>
+                <span className="text-[11px] text-[var(--text-quaternary)]">·</span>
+                <span className="text-[11px] text-[var(--text-quaternary)]">{deal.ourVerdict}</span>
+              </div>
             </div>
 
-            {/* Truth */}
+            {/* What happened since */}
             <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-              <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Truth</div>
-              {truthLines.length > 0 ? (
-                <div className="space-y-1">
-                  {truthLines.map((line, i) => (
-                    <div key={i} className="text-[13px] text-[var(--text-primary)]">{line}</div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[12px] text-[var(--text-quaternary)] italic">No follow-on data yet</div>
+              <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">What Happened Since</div>
+              {deal.latestRound && (
+                <div className="text-[13px] text-[var(--text-primary)] font-medium mb-1">{deal.latestRound}</div>
               )}
-              {deal.industry?.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {deal.industry.slice(0, 3).map((tag, i) => (
-                    <span key={i} className="px-1.5 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] text-[10px] rounded">{tag}</span>
-                  ))}
+              <div className="text-[13px] text-[var(--text-secondary)] leading-relaxed mb-2">{deal.keyMilestone}</div>
+              <div className="space-y-1 pt-2 border-t border-[var(--border-subtle)]">
+                <div className="flex justify-between text-[12px]">
+                  <span className="text-[var(--text-quaternary)]">Total funding</span>
+                  <span className="text-[var(--text-primary)] font-medium">€{deal.totalFunding}M</span>
                 </div>
-              )}
+                <div className="flex justify-between text-[12px]">
+                  <span className="text-[var(--text-quaternary)]">Stage</span>
+                  <span className="text-[var(--text-primary)]">{deal.currentStage}</span>
+                </div>
+                {deal.currentEmployees && (
+                  <div className="flex justify-between text-[12px]">
+                    <span className="text-[var(--text-quaternary)]">Team</span>
+                    <span className="text-[var(--text-primary)]">{deal.currentEmployees}</span>
+                  </div>
+                )}
+                {deal.currentARR && (
+                  <div className="flex justify-between text-[12px]">
+                    <span className="text-[var(--text-quaternary)]">ARR</span>
+                    <span className="text-[var(--text-primary)]">{deal.currentARR}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Learning */}
             <div className={`p-3 rounded-lg border ${
-              isWrong ? 'bg-red-500/5 border-red-500/20' :
-              isRight ? 'bg-emerald-500/5 border-emerald-500/20' :
+              deal.verdict === 'wrong' ? 'bg-red-500/5 border-red-500/20' :
+              deal.verdict === 'right' ? 'bg-emerald-500/5 border-emerald-500/20' :
+              deal.verdict === 'active' ? 'bg-blue-500/5 border-blue-500/20' :
               'bg-[var(--bg-secondary)] border-[var(--border-subtle)]'
             }`}>
               <div className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Learning</div>
-              {/* Verdict + deal comment from Attio as learning context */}
-              {isWrong && (
-                <div className="text-[13px] text-red-500 font-medium mb-1">
-                  We were wrong. They went on to raise significantly.
-                </div>
-              )}
-              {isRight && (
-                <div className="text-[13px] text-emerald-500 font-medium mb-1">
-                  Good pass — confirmed by market.
-                </div>
-              )}
-              {isTBD && (
-                <div className="text-[13px] text-[var(--text-secondary)] mb-1">
-                  Outcome still developing. Check back later.
-                </div>
-              )}
-              {deal.dealComment && (
-                <div className="text-[12px] text-[var(--text-secondary)] mt-2 italic">
-                  "{deal.dealComment}"
-                </div>
-              )}
-              {/* Delta between our call and market */}
-              {deal.ourCallRating && (
-                <div className="text-[12px] text-[var(--text-secondary)] mt-1">
-                  Delta: <span className="font-semibold">
-                    {deal.marketScore > deal.ourCallRating ? '+' : ''}{(deal.marketScore - deal.ourCallRating).toFixed(1)}
+              <div className="text-[13px] text-[var(--text-primary)] leading-relaxed">{deal.learning}</div>
+              {/* Delta */}
+              <div className="flex items-center gap-3 mt-3 pt-2 border-t border-[var(--border-subtle)]">
+                <div className="text-[11px] text-[var(--text-quaternary)]">
+                  Feel → Market: <span className={`font-semibold ${deal.marketScore > deal.ourFeeling ? 'text-red-500' : deal.marketScore < deal.ourFeeling ? 'text-emerald-500' : 'text-[var(--text-secondary)]'}`}>
+                    {deal.ourFeeling}/10 → {deal.marketScore}/10
                   </span>
-                  {' '}(market vs our call)
+                  {deal.marketScore > deal.ourFeeling && ' (underestimated)'}
+                  {deal.marketScore < deal.ourFeeling && ' (overestimated)'}
+                  {deal.marketScore === deal.ourFeeling && ' (calibrated)'}
                 </div>
-              )}
-              {deal.timeAgo !== null && (
-                <div className="text-[11px] text-[var(--text-quaternary)] mt-1">
-                  {deal.timeAgo <= 1 ? 'This month' : deal.timeAgo < 12 ? `${deal.timeAgo} months ago` : `${Math.round(deal.timeAgo / 12)} years ago`}
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>

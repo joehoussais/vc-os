@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useAttioLPs, FUNDS, COMMIT_STAGES, FUND3_STAGES, LP_TEAM_MEMBERS, LP_TEAM_MAP } from '../hooks/useAttioLPs';
+import { useAttioLPs, FUNDS, COMMIT_STAGES, FUND3_STAGES, FUND2_STAGES, LP_TEAM_MEMBERS, LP_TEAM_MAP } from '../hooks/useAttioLPs';
 
 function FilterSelect({ label, value, onChange, options }) {
   return (
@@ -49,7 +49,7 @@ export default function LPPipeline() {
   const [selectedType, setSelectedType] = useState('all');
 
   const fund = FUNDS.find(f => f.id === selectedFund);
-  const stages = selectedFund === 'fund3' ? FUND3_STAGES : COMMIT_STAGES;
+  const stages = selectedFund === 'fund3' ? FUND3_STAGES : selectedFund === 'fund2' ? FUND2_STAGES : COMMIT_STAGES;
 
   // LP types for filter
   const lpTypes = useMemo(() => {
@@ -69,8 +69,8 @@ export default function LPPipeline() {
 
   // Build funnel data for selected fund
   const funnelData = useMemo(() => {
-    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : 'commitStatus';
-    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : selectedFund === 'fund2' ? 'fund2Status' : 'commitStatus';
+    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
     const currency = fund?.currency || 'EUR';
 
     // Build stage lookup from attio values
@@ -120,9 +120,12 @@ export default function LPPipeline() {
     const totalLPs = activeStages.reduce((sum, s) => sum + s.count, 0);
 
     // Committed = oral agreement + second closing agreement (for >Commit) or oral agreement (for Fund III)
-    const committedStageIds = selectedFund === 'fund3'
-      ? ['oral_agreement']
-      : ['oral_agreement', 'second_closing_agreement'];
+    // For Fund II, all LPs are committed (historical fund)
+    const committedStageIds = selectedFund === 'fund2'
+      ? ['invested']
+      : selectedFund === 'fund3'
+        ? ['oral_agreement']
+        : ['oral_agreement', 'second_closing_agreement'];
     const committedAmount = stageData
       .filter(s => committedStageIds.includes(s.id))
       .reduce((sum, s) => sum + s.totalAmount, 0);
@@ -151,8 +154,8 @@ export default function LPPipeline() {
 
   // By owner breakdown
   const ownerBreakdown = useMemo(() => {
-    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : 'commitStatus';
-    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : selectedFund === 'fund2' ? 'fund2Status' : 'commitStatus';
+    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
 
     const byOwner = {};
 
@@ -185,8 +188,8 @@ export default function LPPipeline() {
 
   // By LP type breakdown
   const typeBreakdown = useMemo(() => {
-    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : 'commitStatus';
-    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : selectedFund === 'fund2' ? 'fund2Status' : 'commitStatus';
+    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
 
     const byType = {};
 
@@ -208,8 +211,8 @@ export default function LPPipeline() {
 
   // By country breakdown
   const countryBreakdown = useMemo(() => {
-    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : 'commitStatus';
-    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+    const statusSlug = selectedFund === 'fund3' ? 'fund3Status' : selectedFund === 'fund2' ? 'fund2Status' : 'commitStatus';
+    const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
 
     const byCountry = {};
 
@@ -560,11 +563,11 @@ export default function LPPipeline() {
             {selectedStageData.lps.length > 0 ? (
               selectedStageData.lps
                 .sort((a, b) => {
-                  const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+                  const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
                   return (b[amountSlug] || 0) - (a[amountSlug] || 0);
                 })
                 .map((lp, i) => {
-                  const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : 'commitAmount';
+                  const amountSlug = selectedFund === 'fund3' ? 'fund3Amount' : selectedFund === 'fund2' ? 'fund2Amount' : 'commitAmount';
                   const amount = lp[amountSlug] || 0;
                   const weighted = amount * (selectedStageData.weight || 0);
                   const ownerNames = lp.ownerIds

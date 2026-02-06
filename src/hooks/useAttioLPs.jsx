@@ -6,8 +6,9 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // Fund definitions — each fund has its own status and amount fields in Attio
 export const FUNDS = [
-  { id: 'fund3', name: 'Fund III (RRW3)', statusSlug: 'rrw_3_status', amountSlug: 'amount_rrw', currency: 'USD' },
   { id: 'commit', name: '>Commit', statusSlug: 'status_3', amountSlug: 'amount', currency: 'EUR' },
+  { id: 'fund3', name: 'Fund III (RRW3)', statusSlug: 'rrw_3_status', amountSlug: 'amount_rrw', currency: 'USD' },
+  { id: 'fund2', name: 'Fund II (Historical)', statusSlug: '_fund2', amountSlug: 'amount', currency: 'EUR' },
 ];
 
 // >Commit pipeline stages (status_3) — ordered for funnel display
@@ -38,6 +39,12 @@ export const FUND3_STAGES = [
   { id: 'in_depth', name: 'In-Depth Discussion', attioValues: ['In depth discussion'], weight: 0.50 },
   { id: 'pause', name: 'Pause', attioValues: ['Pause'], weight: 0.10 },
   { id: 'oral_agreement', name: 'Oral Agreement', attioValues: ['Oral agreement'], weight: 0.90 },
+];
+
+// Fund II — historical/closed fund. Fund II LPs are tagged as "Fund II LP" stage in >Commit.
+// We show them in a single "Invested" stage since Fund II is fully deployed.
+export const FUND2_STAGES = [
+  { id: 'invested', name: 'Fund II Investors', attioValues: ['Fund II LP'], weight: 1.0 },
 ];
 
 // Team members (same as DealFunnel)
@@ -144,6 +151,9 @@ export function useAttioLPs() {
       const createdAt = getAttrValue(lp, 'created_at');
       const lastModified = getAttrValue(lp, 'last_modified');
 
+      // Fund II — LPs tagged as "Fund II LP" in >Commit pipeline
+      const isFund2LP = commitStatus === 'Fund II LP';
+
       return {
         id: recordId,
         name,
@@ -161,6 +171,9 @@ export function useAttioLPs() {
         fund3Amount,
         fund3Priority,
         fund3Interest,
+        // Fund II (derived)
+        fund2Status: isFund2LP ? 'Fund II LP' : null,
+        fund2Amount: isFund2LP ? commitAmount : null,
         // Meta
         comment,
         raiseInvite,
