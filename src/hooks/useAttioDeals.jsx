@@ -158,6 +158,14 @@ export function useAttioDeals() {
       const ownerAttr = deal.values?.owner;
       const ownerIds = ownerAttr ? ownerAttr.map(o => o.referenced_actor_id).filter(Boolean) : [];
 
+      // Shadow portfolio fields — pulled directly from Attio
+      const reasonsToDecline = company ? getAttrValue(company, 'reasons_to_decline') : null;
+      const dealComment = getAttrValue(deal, 'comment');
+      const fundingRaisedUsd = company ? getAttrValue(company, 'funding_raised_usd') : null;
+      const lastFundingStatus = company ? getAttrValue(company, 'last_funding_status_46') : null;
+      const lastFundingDate = company ? getAttrValue(company, 'last_funding_date') : null;
+      const companyDescription = company ? getAttrValue(company, 'description') : null;
+
       return {
         id: dealRecordId,
         dealName: dealName || 'Unknown Deal',
@@ -171,7 +179,7 @@ export function useAttioDeals() {
         announcedDate: bestDate,
         inScope,
         seen,
-        status,
+        status: companyStatus || status,
         industry: categories,
         rating: feeling ? feeling * 2 : null,
         dealScore,
@@ -179,10 +187,16 @@ export function useAttioDeals() {
         ownerIds,
         receivedDate,
         logoUrl: company ? getAttrValue(company, 'logo_url') : null,
-        description: company ? getAttrValue(company, 'description') : null,
+        description: companyDescription,
         linkedinUrl: company ? getAttrValue(company, 'linkedin') : null,
         totalFunding: company ? getAttrValue(company, 'total_funding_amount') : null,
         employeeRange: company ? getAttrValue(company, 'employee_range') : null,
+        // Shadow portfolio data (from Attio)
+        reasonsToDecline,
+        dealComment,
+        fundingRaisedUsd,
+        lastFundingStatus,
+        lastFundingDate,
       };
     }).filter(deal => deal.date); // Only need a quarter (now uses bestDate fallback)
   }, []);
