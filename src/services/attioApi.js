@@ -186,7 +186,7 @@ export async function fetchListEntries() {
 }
 
 // Fetch all entries from the Deal Flow list (deal_flow_4)
-// Uses same pagination pattern as fetchListEntries
+// Strips heavy fields (email_content) to reduce payload size and cache footprint
 export async function fetchDealFlowEntries() {
   const BATCH = 500;
   let allEntries = [];
@@ -199,6 +199,20 @@ export async function fetchDealFlowEntries() {
 
     const data = await attioQuery('/lists/deal_flow_4/entries/query', payload);
     const batch = data.data || [];
+
+    // Strip email_content immediately — it's massive (full forwarded emails) and never used
+    for (const entry of batch) {
+      if (entry.entry_values?.email_content) {
+        delete entry.entry_values.email_content;
+      }
+      if (entry.entry_values?.reasons_for_rejecting) {
+        delete entry.entry_values.reasons_for_rejecting;
+      }
+      if (entry.entry_values?.reasons_for_declining_5) {
+        delete entry.entry_values.reasons_for_declining_5;
+      }
+    }
+
     allEntries = allEntries.concat(batch);
 
     if (batch.length < BATCH) break;
@@ -208,12 +222,39 @@ export async function fetchDealFlowEntries() {
   return allEntries;
 }
 
+// Qualified count cache (localStorage, 1h TTL — this number barely changes)
+const QUALIFIED_CACHE_KEY = 'attio-qualified-count';
+const QUALIFIED_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function getCachedQualifiedCount() {
+  try {
+    const raw = localStorage.getItem(QUALIFIED_CACHE_KEY);
+    if (!raw) return null;
+    const { count, timestamp } = JSON.parse(raw);
+    if (Date.now() - timestamp > QUALIFIED_CACHE_TTL) {
+      localStorage.removeItem(QUALIFIED_CACHE_KEY);
+      return null;
+    }
+    return count;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedQualifiedCount(count) {
+  try {
+    localStorage.setItem(QUALIFIED_CACHE_KEY, JSON.stringify({ count, timestamp: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
+
 // Fetch count of entries in the Proactive Sourcing list (old_2_6)
-// We only need the total count for the "Qualified" stage
+// Uses localStorage cache (1h) since this count rarely changes
 export async function fetchProactiveSourcingCount() {
-  const data = await attioQuery('/lists/old_2_6/entries/query', { limit: 1 });
-  // The first batch tells us if there are entries; to get total count we paginate
-  // But for efficiency, we'll do a fast count by fetching with limit=500 batches
+  const cached = getCachedQualifiedCount();
+  if (cached != null) return cached;
+
   const BATCH = 500;
   let total = 0;
   let offset = 0;
@@ -231,6 +272,7 @@ export async function fetchProactiveSourcingCount() {
     offset += BATCH;
   }
 
+  setCachedQualifiedCount(total);
   return total;
 }
 
