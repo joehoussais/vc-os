@@ -2,18 +2,13 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  useDraggable,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { useAttioCompanies } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 import { granolaMeetings } from '../data/mockData';
@@ -179,21 +174,20 @@ function MiniProgressBar({ pct, label }) {
 }
 
 // ─── Draggable Card ──────────────────────────────────────────────────
-function SortableKanbanCard({ deal, assessment, onClick }) {
+function DraggableKanbanCard({ deal, assessment, onClick }) {
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
-    transition,
     isDragging,
-  } = useSortable({ id: deal.id });
+  } = useDraggable({ id: deal.id, data: { deal } });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    opacity: isDragging ? 0.3 : 1,
     zIndex: isDragging ? 50 : 'auto',
+    position: 'relative',
   };
 
   return (
@@ -250,37 +244,36 @@ function DroppableColumn({ stage, dealIds, allDeals, assessments, onCardClick })
   const deals = dealIds.map(id => allDeals.find(d => d.id === id)).filter(Boolean);
 
   return (
-    <div className="flex-1 min-w-0" ref={setNodeRef}>
+    <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
         <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">{stage.label}</h4>
         <span className="text-[11px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded-md">{deals.length}</span>
       </div>
-      <SortableContext items={dealIds} strategy={verticalListSortingStrategy}>
-        <div
-          className={`space-y-2.5 min-h-[120px] rounded-lg p-1.5 transition-all duration-200 ${
-            isOver ? 'bg-[var(--rrw-red)]/5 ring-2 ring-[var(--rrw-red)]/20 ring-dashed' : ''
-          }`}
-        >
-          {deals.map(d => (
-            <SortableKanbanCard
-              key={d.id}
-              deal={d}
-              assessment={assessments[d.id]}
-              onClick={() => onCardClick(d)}
-            />
-          ))}
-          {deals.length === 0 && (
-            <div className={`text-center py-8 text-[11px] border border-dashed rounded-lg transition-colors ${
-              isOver
-                ? 'text-[var(--rrw-red)] border-[var(--rrw-red)]/40 bg-[var(--rrw-red)]/5'
-                : 'text-[var(--text-quaternary)] border-[var(--border-subtle)]'
-            }`}>
-              {isOver ? 'Drop here' : 'No deals at this stage'}
-            </div>
-          )}
-        </div>
-      </SortableContext>
+      <div
+        ref={setNodeRef}
+        className={`space-y-2.5 min-h-[120px] rounded-lg p-1.5 transition-all duration-200 ${
+          isOver ? 'bg-[var(--rrw-red)]/5 ring-2 ring-[var(--rrw-red)]/20' : ''
+        }`}
+      >
+        {deals.map(d => (
+          <DraggableKanbanCard
+            key={d.id}
+            deal={d}
+            assessment={assessments[d.id]}
+            onClick={() => onCardClick(d)}
+          />
+        ))}
+        {deals.length === 0 && (
+          <div className={`text-center py-8 text-[11px] border border-dashed rounded-lg transition-colors ${
+            isOver
+              ? 'text-[var(--rrw-red)] border-[var(--rrw-red)]/40 bg-[var(--rrw-red)]/5'
+              : 'text-[var(--text-quaternary)] border-[var(--border-subtle)]'
+          }`}>
+            {isOver ? 'Drop here' : 'No deals at this stage'}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -477,13 +470,15 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
     const dealId = active.id;
     const sourceCol = findColumn(dealId);
 
-    // Determine target column: over.id can be a column ID or a deal ID
-    let targetCol = KANBAN_STAGES.find(s => s.id === over.id) ? over.id : findColumn(over.id);
+    // The over.id is the droppable column ID (met, analysis, committee)
+    const stageIds = new Set(KANBAN_STAGES.map(s => s.id));
+    const targetCol = stageIds.has(over.id) ? over.id : null;
     if (!targetCol || targetCol === sourceCol) return;
 
     // Persist the column override
     setColumnOverrides(prev => ({ ...prev, [dealId]: targetCol }));
-    showToast?.(`Moved to ${KANBAN_STAGES.find(s => s.id === targetCol)?.label}`);
+    const targetLabel = KANBAN_STAGES.find(s => s.id === targetCol)?.label;
+    showToast?.(`Moved to ${targetLabel}`);
   }
 
   function handleDragCancel() {
@@ -556,7 +551,7 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
           {/* Kanban columns with DnD */}
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
