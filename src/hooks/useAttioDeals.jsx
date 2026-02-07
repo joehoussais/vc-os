@@ -182,9 +182,9 @@ export function useAttioDeals() {
       // In scope from coverage list — defaults to true if not in list (all tracked deals are in scope)
       const inScope = coverage ? coverageInScope : true;
 
-      // Amount — coverage list stores in M€ already, don't divide again
+      // Amount — both sources return base currency, convert to M€
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
-      const amount = coverageAmount != null ? Math.round(coverageAmount) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
+      const amount = coverageAmount != null ? Math.round(coverageAmount / 1000000) : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
       // Outcome — derived from company status

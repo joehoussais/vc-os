@@ -123,10 +123,10 @@ export function useAttioCoverage() {
       // All deals here are in scope (we filtered the coverage list for in_scope=true)
       const inScope = true;
 
-      // Amount — coverage list stores in M€ already
+      // Amount — both sources return base currency, convert to M€
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
       const amount = coverageAmount != null
-        ? Math.round(coverageAmount)
+        ? Math.round(coverageAmount / 1000000)
         : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
