@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react';
-import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS } from '../hooks/useAttioCompanies';
+import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS, UNIVERSE_PLACEHOLDER, UNIVERSE_PLACEHOLDER_VALUE } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 
 const STAGE_DEFINITIONS = {
-  universe: 'All startups tracked in our CRM',
-  qualified: 'An owner has been assigned to the opportunity',
-  contacted: 'Contact has been established through one of our channels',
-  met: 'A first meeting has taken place',
-  dealflow: 'Active fundraising round — deck received',
+  universe: 'Estimated European startup ecosystem',
+  qualified: 'Owner assigned — actively tracked in our CRM',
+  contacted: 'First email interaction recorded (deck shared)',
+  met: 'First calendar interaction recorded',
+  dealflow: 'Active fundraising round — deck under review',
   analysis: 'Deep-dive due diligence underway',
   committee: 'Presented to Investment Committee',
   portfolio: 'Investment made',
 };
+
+const DEAL_ANALYSIS_STAGES = new Set(['dealflow', 'analysis', 'committee']);
 
 function FilterSelect({ label, value, onChange, options }) {
   return (
@@ -40,20 +42,13 @@ function formatInteractionDate(raw) {
   return `${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
-function formatInteractionDateShort(raw) {
-  if (!raw) return null;
-  const match = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!match) return raw;
-  const [, day, month, year] = match;
-  return `${day}/${month}/${year}`;
-}
-
-export default function DealFunnel() {
+export default function DealFunnel({ setActiveTab }) {
   const { companies, loading, isLive } = useAttioCompanies();
 
   const [filters, setFilters] = useState({
     owner: 'all',
     region: 'all',
+    timePeriod: 'all',
   });
   const [activeSource, setActiveSource] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
@@ -65,7 +60,7 @@ export default function DealFunnel() {
     return ['all', ...Array.from(set).sort()];
   }, [companies]);
 
-  // Filter by owner & region
+  // Filter by owner & region (time period applied in funnel data)
   const filtered = useMemo(() => {
     return companies.filter(c => {
       if (filters.owner !== 'all' && !c.ownerIds.includes(filters.owner)) return false;
@@ -74,11 +69,22 @@ export default function DealFunnel() {
     });
   }, [companies, filters]);
 
+  // Check if a company passes the time-period filter (for contacted+ stages)
+  const passesTimePeriod = (c) => {
+    if (filters.timePeriod === 'all') return true;
+    if (filters.timePeriod === '2025') return c.contactYear === 2025;
+    if (filters.timePeriod === '2026') return c.contactYear === 2026;
+    if (filters.timePeriod === 'recent') return c.contactYear === 2025 || c.contactYear === 2026;
+    return true;
+  };
+
   // Build funnel data
   const funnelData = useMemo(() => {
     const stageOrder = FUNNEL_STAGES.map(s => s.id);
     const stageIndex = {};
     stageOrder.forEach((id, i) => { stageIndex[id] = i; });
+
+    const contactedIdx = stageIndex['contacted'];
 
     const counts = {};
     const companiesByStage = {};
@@ -114,6 +120,10 @@ export default function DealFunnel() {
       const idx = stageIndex[c.funnelStage];
       if (idx === undefined) return;
 
+      // For contacted+ stages, apply time-period filter
+      const isContactedPlus = idx >= contactedIdx;
+      if (isContactedPlus && !passesTimePeriod(c)) return;
+
       companiesByStage[c.funnelStage].push(c);
       if (c.growthScore != null) growthScores[c.funnelStage].push(c.growthScore);
 
@@ -123,18 +133,36 @@ export default function DealFunnel() {
       if (c.firstCalendarInteraction) interactionStats[c.funnelStage].withMeeting++;
       if (c.introPathCount > 0) interactionStats[c.funnelStage].withIntroPath++;
 
-      // Cumulative
-      for (let i = 0; i <= idx; i++) {
+      // Cumulative counting — but universe is a placeholder, so start from qualified
+      // Qualified = all filtered companies (no time filter)
+      // Contacted onward = cumulative with time filter
+      for (let i = stageIndex['qualified']; i <= idx; i++) {
         counts[stageOrder[i]]++;
         sourceByStage[stageOrder[i]][c.source]++;
       }
 
       sourceCompaniesByStage[c.funnelStage][c.source].push(c);
 
-      if (idx >= stageIndex['contacted'] && c.growthScore != null) {
+      if (idx >= contactedIdx && c.growthScore != null) {
         sourceGrowthAtContacted[c.source].push(c.growthScore);
       }
     });
+
+    // When time-period filter is active, contacted+ companies that didn't pass the filter
+    // were skipped above. But they still belong in the 'qualified' pool.
+    if (filters.timePeriod !== 'all') {
+      filtered.forEach(c => {
+        const idx = stageIndex[c.funnelStage];
+        if (idx === undefined) return;
+        const isContactedPlus = idx >= contactedIdx;
+        if (isContactedPlus && !passesTimePeriod(c)) {
+          counts['qualified']++;
+        }
+      });
+    }
+
+    // Universe is always the placeholder
+    counts['universe'] = UNIVERSE_PLACEHOLDER_VALUE;
 
     const sourceSummary = SOURCE_CHANNELS.map(ch => {
       const contactedCount = sourceByStage['contacted'][ch.id];
@@ -160,8 +188,16 @@ export default function DealFunnel() {
       const avgGrowth = scores.length > 0
         ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
         : null;
-      const prevCount = i > 0 ? counts[stageOrder[i - 1]] : count;
-      const conversionRate = i > 0 && prevCount > 0 ? Math.round((count / prevCount) * 100) : 100;
+
+      let conversionRate;
+      if (stage.id === 'universe') {
+        conversionRate = null; // No conversion rate for placeholder
+      } else if (stage.id === 'qualified') {
+        conversionRate = null; // No meaningful conversion from placeholder universe
+      } else {
+        const prevCount = counts[stageOrder[i - 1]];
+        conversionRate = prevCount > 0 ? Math.round((count / prevCount) * 100) : 0;
+      }
 
       return {
         ...stage,
@@ -174,11 +210,11 @@ export default function DealFunnel() {
       };
     });
 
-    const overallConversion = counts.universe > 0
-      ? ((counts.portfolio / counts.universe) * 100).toFixed(2) : '0.00';
+    const overallConversion = counts.qualified > 0
+      ? ((counts.portfolio / counts.qualified) * 100).toFixed(2) : '0.00';
 
     return { stages, overallConversion, counts, sourceSummary, sourceByStage, sourceCompaniesByStage };
-  }, [filtered]);
+  }, [filtered, filters.timePeriod]);
 
   // Source-specific funnel + analytics
   const sourceFunnel = useMemo(() => {
@@ -212,18 +248,15 @@ export default function DealFunnel() {
   const sourceAnalytics = useMemo(() => {
     if (!activeSource) return null;
 
-    // All companies that went through this source (cumulative from contacted onward)
     const stageOrder = FUNNEL_STAGES.map(s => s.id);
     const contactedIdx = stageOrder.indexOf('contacted');
 
-    // Collect all companies at contacted+ with this source
     const sourceCompanies = [];
     for (let i = contactedIdx; i < stageOrder.length; i++) {
       const list = funnelData.sourceCompaniesByStage[stageOrder[i]]?.[activeSource] || [];
       sourceCompanies.push(...list);
     }
 
-    // By team member
     const byTeam = {};
     sourceCompanies.forEach(c => {
       c.ownerIds.forEach(oid => {
@@ -242,7 +275,6 @@ export default function DealFunnel() {
       }
     });
 
-    // By country/region
     const byCountry = {};
     sourceCompanies.forEach(c => {
       const r = c.region || 'Other';
@@ -253,7 +285,6 @@ export default function DealFunnel() {
       if (idx >= stageOrder.indexOf('dealflow')) byCountry[r].dealflow++;
     });
 
-    // Interaction stats
     const withEmail = sourceCompanies.filter(c => c.firstEmailInteraction).length;
     const withMeeting = sourceCompanies.filter(c => c.firstCalendarInteraction).length;
     const withIntro = sourceCompanies.filter(c => c.introPathCount > 0).length;
@@ -322,7 +353,7 @@ export default function DealFunnel() {
       {isLive && (
         <div className="flex items-center justify-end mb-2 gap-2">
           <span className="text-[11px] text-[var(--text-quaternary)]">
-            {companies.length.toLocaleString()} startups
+            {companies.length.toLocaleString()} companies tracked
           </span>
           {loading && <span className="text-[11px] text-[var(--rrw-red)]">Syncing...</span>}
         </div>
@@ -358,8 +389,19 @@ export default function DealFunnel() {
               })),
             ]}
           />
+          <FilterSelect
+            label="Period"
+            value={filters.timePeriod}
+            onChange={(v) => setFilters({ ...filters, timePeriod: v })}
+            options={[
+              { value: 'all', label: 'All Time' },
+              { value: '2025', label: '2025' },
+              { value: '2026', label: '2026' },
+              { value: 'recent', label: '2025-2026' },
+            ]}
+          />
           <div className="ml-auto text-right">
-            <span className="text-xs text-[var(--text-tertiary)] block">Overall conversion</span>
+            <span className="text-xs text-[var(--text-tertiary)] block">Qualified → Portfolio</span>
             <span className="text-2xl font-bold text-[var(--rrw-red)]">{funnelData.overallConversion}%</span>
           </div>
         </div>
@@ -419,6 +461,15 @@ export default function DealFunnel() {
                           <div className="text-lg font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
                           <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
                           <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">{stage.stageCount} at this stage</div>
+                          {DEAL_ANALYSIS_STAGES.has(stage.id) && setActiveTab && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveTab('deal-analysis'); }}
+                              className="text-[10px] mt-1 hover:underline"
+                              style={{ color: 'var(--rrw-red)' }}
+                            >
+                              View in Deal Analysis →
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -432,7 +483,9 @@ export default function DealFunnel() {
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h3 className="font-semibold text-[var(--text-primary)]">Deal Flow Conversion Funnel</h3>
-                  <p className="text-xs text-[var(--text-tertiary)]">Click any stage to see companies · Click a source to drill down</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Click any stage to see companies · Source estimated from interaction data
+                  </p>
                 </div>
               </div>
 
@@ -443,16 +496,27 @@ export default function DealFunnel() {
                   const widthStep = (maxWidth - minWidth) / (funnelData.stages.length - 1);
                   const width = maxWidth - (widthStep * index);
 
+                  // Display value: placeholder for universe, real count for others
+                  const displayCount = stage.id === 'universe'
+                    ? UNIVERSE_PLACEHOLDER
+                    : stage.count.toLocaleString();
+
+                  // Conversion rate display
+                  const showConversion = stage.conversionRate != null && index > 0;
+
                   if (stage.split) {
                     const unknownSource = funnelData.sourceSummary.find(s => s.id === 'unknown');
+                    const visibleChannels = SOURCE_CHANNELS.filter(ch => ch.id !== 'unknown');
 
                     return (
                       <div key={stage.id}>
-                        <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
-                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
-                          <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
-                          <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
-                        </div>
+                        {showConversion && (
+                          <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
+                            <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                            <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
+                            <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                          </div>
+                        )}
 
                         <div className="mx-auto mb-1" style={{ width: `${width}%` }}>
                           <div
@@ -464,7 +528,7 @@ export default function DealFunnel() {
                             }`}
                           >
                             <div className="text-center">
-                              <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                              <div className="text-xl font-bold text-[var(--text-primary)]">{displayCount}</div>
                               <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
                               <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
                                 {STAGE_DEFINITIONS[stage.id]}
@@ -473,8 +537,8 @@ export default function DealFunnel() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-5 gap-0 border-2 border-t-0 border-[var(--border-default)] rounded-b-lg overflow-hidden">
-                            {SOURCE_CHANNELS.filter(ch => ch.id !== 'unknown').map((channel, ci) => {
+                          <div className={`grid grid-cols-2 gap-0 border-2 border-t-0 border-[var(--border-default)] rounded-b-lg overflow-hidden`}>
+                            {visibleChannels.map((channel, ci) => {
                               const summary = funnelData.sourceSummary.find(s => s.id === channel.id);
                               const count = summary?.contactedCount || 0;
                               const rate = summary?.qualifiedToContactRate || 0;
@@ -484,7 +548,7 @@ export default function DealFunnel() {
                                   key={channel.id}
                                   onClick={() => setActiveSource(channel.id)}
                                   className={`py-3 px-2 text-center cursor-pointer transition-all hover:bg-[var(--rrw-red-subtle)] ${
-                                    ci < 4 ? 'border-r border-[var(--border-default)]' : ''
+                                    ci < visibleChannels.length - 1 ? 'border-r border-[var(--border-default)]' : ''
                                   }`}
                                 >
                                   <div className="text-[10px] font-medium text-[var(--text-tertiary)] mb-1">{channel.name}</div>
@@ -507,7 +571,7 @@ export default function DealFunnel() {
 
                   return (
                     <div key={stage.id}>
-                      {index > 0 && (
+                      {index > 0 && showConversion && (
                         <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
                           <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                           <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{stage.conversionRate}%</span>
@@ -515,22 +579,46 @@ export default function DealFunnel() {
                         </div>
                       )}
 
+                      {/* Dotted separator between universe and qualified (no percentage) */}
+                      {stage.id === 'qualified' && (
+                        <div className="flex items-center justify-center gap-3 py-1.5 text-[11px]">
+                          <div className="h-px flex-1 max-w-[50px] border-t border-dashed border-[var(--text-quaternary)]" />
+                          <span className="text-[var(--text-quaternary)]">curated from</span>
+                          <div className="h-px flex-1 max-w-[50px] border-t border-dashed border-[var(--text-quaternary)]" />
+                        </div>
+                      )}
+
                       <div
-                        onClick={() => setSelectedStage(selectedStage === stage.id ? null : stage.id)}
-                        className={`mx-auto mb-1 py-3 px-5 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${
+                        onClick={() => stage.id !== 'universe' ? setSelectedStage(selectedStage === stage.id ? null : stage.id) : null}
+                        className={`mx-auto mb-1 py-3 px-5 rounded-lg border-2 transition-all ${
+                          stage.id === 'universe' ? 'cursor-default' : 'cursor-pointer hover:shadow-md'
+                        } ${
                           selectedStage === stage.id
                             ? 'border-[var(--rrw-red)] bg-[var(--rrw-red-subtle)]'
-                            : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
+                            : stage.id === 'universe'
+                              ? 'border-dashed border-[var(--border-default)] bg-[var(--bg-tertiary)]'
+                              : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
                         }`}
                         style={{ width: `${width}%` }}
                       >
                         <div className="text-center">
-                          <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                          <div className={`font-bold text-[var(--text-primary)] ${stage.id === 'universe' ? 'text-lg' : 'text-xl'}`}>
+                            {displayCount}
+                          </div>
                           <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
                           <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
                             {STAGE_DEFINITIONS[stage.id]}
-                            {stage.avgGrowthScore != null && ` · ⌀ ${stage.avgGrowthScore}`}
+                            {stage.id !== 'universe' && stage.avgGrowthScore != null && ` · ⌀ ${stage.avgGrowthScore}`}
                           </div>
+                          {DEAL_ANALYSIS_STAGES.has(stage.id) && setActiveTab && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveTab('deal-analysis'); }}
+                              className="text-[10px] mt-1 hover:underline"
+                              style={{ color: 'var(--rrw-red)' }}
+                            >
+                              View in Deal Analysis →
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -698,9 +786,10 @@ export default function DealFunnel() {
               <div className="border-t border-[var(--border-default)] pt-4 mb-4">
                 <h4 className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Conversion Rates</h4>
                 <div className="space-y-0">
-                  {funnelData.stages.slice(1).map((stage, i, arr) => {
-                    const prev = i === 0 ? funnelData.stages[0] : arr[i - 1];
+                  {funnelData.stages.slice(2).map((stage, i, arr) => {
+                    const prev = i === 0 ? funnelData.stages[1] : arr[i - 1];
                     const rate = stage.conversionRate;
+                    if (rate == null) return null;
                     const rateColor = rate >= 40 ? 'text-emerald-500' : rate >= 20 ? 'text-amber-500' : 'text-red-500';
                     return (
                       <div key={stage.id || i} className="flex justify-between py-2.5 border-b border-[var(--border-subtle)] last:border-0">
@@ -739,7 +828,7 @@ export default function DealFunnel() {
                 <h4 className="font-medium text-[var(--text-secondary)] mb-3">Interaction Data</h4>
                 <div className="space-y-2">
                   {funnelData.stages
-                    .filter(s => s.interactionStats && s.interactionStats.total > 0)
+                    .filter(s => s.id !== 'universe' && s.interactionStats && s.interactionStats.total > 0)
                     .map(stage => {
                       const stats = stage.interactionStats;
                       const emailPct = stats.total > 0 ? Math.round((stats.withEmail / stats.total) * 100) : 0;
@@ -771,7 +860,7 @@ export default function DealFunnel() {
               <div className="border-t border-[var(--border-default)] mt-4 pt-4">
                 <h4 className="font-medium text-[var(--text-secondary)] mb-3">Avg Growth Score</h4>
                 <div className="space-y-2">
-                  {funnelData.stages.filter(s => s.avgGrowthScore != null).map(stage => (
+                  {funnelData.stages.filter(s => s.id !== 'universe' && s.avgGrowthScore != null).map(stage => (
                     <div key={stage.id} className="flex justify-between items-center text-[13px]">
                       <span className="text-[var(--text-tertiary)]">{stage.name}</span>
                       <div className="flex items-center gap-2">
@@ -792,19 +881,19 @@ export default function DealFunnel() {
               <div className="border-t border-[var(--border-default)] mt-4 pt-4">
                 <div className="space-y-2.5">
                   <div className="flex justify-between text-[13px]">
-                    <span className="text-[var(--text-tertiary)]">Total startups</span>
-                    <span className="font-semibold text-[var(--text-primary)]">{filtered.length.toLocaleString()}</span>
+                    <span className="text-[var(--text-tertiary)]">Qualified (with owner)</span>
+                    <span className="font-semibold text-[var(--text-primary)]">{funnelData.counts.qualified?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between text-[13px]">
-                    <span className="text-[var(--text-tertiary)]">With owner</span>
+                    <span className="text-[var(--text-tertiary)]">Contact established</span>
                     <span className="font-semibold text-[var(--text-primary)]">
-                      {filtered.filter(c => c.hasOwner).length.toLocaleString()}
+                      {funnelData.counts.contacted?.toLocaleString() || 0}
                     </span>
                   </div>
                   <div className="flex justify-between text-[13px]">
                     <span className="text-[var(--text-tertiary)]">In deal flow+</span>
                     <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>
-                      {filtered.filter(c => ['dealflow', 'analysis', 'committee', 'portfolio'].includes(c.funnelStage)).length.toLocaleString()}
+                      {((funnelData.counts.dealflow || 0)).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -815,7 +904,7 @@ export default function DealFunnel() {
       </div>
 
       {/* Stage Detail Panel */}
-      {selectedStageData && (
+      {selectedStageData && selectedStageData.id !== 'universe' && (
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -824,14 +913,25 @@ export default function DealFunnel() {
                 {selectedStageData.stageCount?.toLocaleString() || selectedStageData.companies?.length.toLocaleString()} companies at this stage
               </p>
             </div>
-            <button
-              onClick={() => setSelectedStage(null)}
-              className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              {DEAL_ANALYSIS_STAGES.has(selectedStageData.id) && setActiveTab && (
+                <button
+                  onClick={() => setActiveTab('deal-analysis')}
+                  className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--rrw-red)] hover:bg-[var(--rrw-red-subtle)] transition-colors"
+                  style={{ color: 'var(--rrw-red)' }}
+                >
+                  Open in Deal Analysis →
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedStage(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Column headers */}

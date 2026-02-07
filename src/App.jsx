@@ -57,7 +57,7 @@ function AppContent() {
       case 'coverage':
         return <Sourcing />;
       case 'deal-funnel':
-        return <DealFunnel />;
+        return <DealFunnel setActiveTab={setActiveTab} />;
       case 'deal-analysis':
         return (
           <DealAnalysis

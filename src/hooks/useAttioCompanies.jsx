@@ -1,69 +1,54 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllCompanies, getAttrValue, getAttrValues, getLocationCountryCode } from '../services/attioApi';
+import { fetchOwnedCompanies, getAttrValue, getAttrValues, getLocationCountryCode } from '../services/attioApi';
 
-const CACHE_KEY = 'attio-companies-cache';
+const CACHE_KEY = 'attio-owned-companies-cache';
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-// Funnel stages derived from company status_4
-// Universe = all startups (no owner)
-// Qualified = has owner assigned
-// Then status_4 maps to stages:
-const STATUS_TO_FUNNEL = {
-  'Qualification': 'sourcing',       // pre-contact — part of universe/qualified
-  'To contact': 'sourcing',          // pre-contact — part of universe/qualified
-  'Ghosting (Help)': 'contacted',    // attempted contact
-  'Contacted / to meet': 'contacted',
-  'Met': 'met',
-  'To nurture': 'met',               // met but nurturing
-  'Dealflow': 'dealflow',
-  'Due Dilligence': 'analysis',      // note: typo in Attio data
-  'Due Diligence': 'analysis',
-  'To Decline': 'passed',
-  'Passed': 'passed',
-  'IC': 'committee',
+// Universe placeholder — real number unknown, estimated European ecosystem
+export const UNIVERSE_PLACEHOLDER = '10,000+';
+export const UNIVERSE_PLACEHOLDER_VALUE = 10000;
+
+// Status overrides: these always map to their stage regardless of interaction signals
+const STATUS_OVERRIDES = {
   'Portfolio': 'portfolio',
-  'Analysed but too early': 'passed',
-  'No US path for now': 'passed',
-  'Old/ Out of scope': 'passed',
+  'IC': 'committee',
+  'Due Dilligence': 'analysis', // typo in Attio data
+  'Due Diligence': 'analysis',
+  'Dealflow': 'dealflow',
 };
+
+// Status hints: suggest a stage, interaction signals can also trigger these
+const STATUS_HINTS = {
+  'Met': 'met',
+  'To nurture': 'met',
+  'Contacted / to meet': 'contacted',
+  'Ghosting (Help)': 'contacted',
+};
+
+// Passed statuses — determine highest reached stage via interaction signals
+const PASSED_STATUSES = new Set([
+  'To Decline', 'Passed', 'Analysed but too early',
+  'No US path for now', 'Old/ Out of scope',
+]);
 
 // The funnel stage order for display
 export const FUNNEL_STAGES = [
-  { id: 'universe', name: 'Sourcing Universe', description: 'All startups in the database' },
-  { id: 'qualified', name: 'Qualified', description: 'Owner assigned — actively being worked' },
-  { id: 'contacted', name: 'Contact Established', description: 'Contact established through one of our channels', split: true },
-  { id: 'met', name: 'First Meeting', description: 'First meeting held' },
-  { id: 'dealflow', name: 'Deal Flow', description: 'Active fundraising round — deck received' },
+  { id: 'universe', name: 'Sourcing Universe', description: 'Estimated European startup ecosystem' },
+  { id: 'qualified', name: 'Qualified', description: 'Owner assigned — actively tracked in our CRM' },
+  { id: 'contacted', name: 'Contact Established', description: 'First email interaction recorded', split: true },
+  { id: 'met', name: 'First Meeting', description: 'First calendar interaction recorded' },
+  { id: 'dealflow', name: 'Deal Flow', description: 'Active fundraising round — deck under review' },
   { id: 'analysis', name: 'In-Depth Analysis', description: 'Deep-dive due diligence underway' },
   { id: 'committee', name: 'Committee (IC)', description: 'Presented to Investment Committee' },
   { id: 'portfolio', name: 'Portfolio', description: 'Investment made' },
 ];
 
-// Source channels for the contact-initiated split
+// Source channels — heuristic from interaction data (no source field in Attio)
 export const SOURCE_CHANNELS = [
-  { id: 'cold_email', name: 'Cold Email', color: '#3B82F6' },
-  { id: 'vc_intro', name: 'VC Intro', color: '#8B5CF6' },
-  { id: 'banker', name: 'Banker', color: '#F59E0B' },
-  { id: 'other_intro', name: 'Other Intro', color: '#10B981' },
-  { id: 'cold_outreach', name: 'Cold Outreach', color: '#6366F1' },
-  { id: 'unknown', name: 'Unknown', color: '#9CA3AF' },
+  { id: 'cold_outreach', name: 'Cold Outreach', color: '#3B82F6' },
+  { id: 'intro', name: 'Intro / Referral', color: '#8B5CF6' },
+  { id: 'unknown', name: 'Untagged', color: '#9CA3AF' },
 ];
-
-// Map Attio source field values to our channel IDs
-const SOURCE_VALUE_MAP = {
-  'Cold Email': 'cold_email',
-  'cold_email': 'cold_email',
-  'VC Introduction': 'vc_intro',
-  'VC Intro': 'vc_intro',
-  'vc_intro': 'vc_intro',
-  'Banker': 'banker',
-  'banker': 'banker',
-  'Other Introduction': 'other_intro',
-  'Other Intro': 'other_intro',
-  'other_intro': 'other_intro',
-  'Cold Outreach': 'cold_outreach',
-  'cold_outreach': 'cold_outreach',
-};
 
 // Country code to region mapping (for filters)
 const countryToFilterRegion = {
@@ -78,6 +63,45 @@ const countryToFilterRegion = {
   'SI': 'Eastern Europe', 'HR': 'Eastern Europe', 'RS': 'Eastern Europe',
   'UA': 'Eastern Europe', 'EE': 'Eastern Europe', 'LV': 'Eastern Europe', 'LT': 'Eastern Europe',
 };
+
+// Parse interaction date ("HH:MM DD/MM/YYYY") to extract year
+function parseInteractionYear(raw) {
+  if (!raw) return null;
+  const match = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return match ? parseInt(match[3], 10) : null;
+}
+
+// Determine funnel stage from status + interaction signals
+function determineFunnelStage(status, firstEmailInteraction, firstCalendarInteraction) {
+  // 1. Status overrides always win
+  if (status && STATUS_OVERRIDES[status]) {
+    return STATUS_OVERRIDES[status];
+  }
+
+  // 2. Status hints
+  if (status && STATUS_HINTS[status]) {
+    return STATUS_HINTS[status];
+  }
+
+  // 3. Passed statuses — determine highest reached stage from interaction signals
+  if (status && PASSED_STATUSES.has(status)) {
+    if (firstCalendarInteraction) return 'met';
+    if (firstEmailInteraction) return 'contacted';
+    return 'qualified';
+  }
+
+  // 4. Pre-contact statuses (Qualification, To contact, or unknown) — check interaction signals
+  if (firstCalendarInteraction) return 'met';
+  if (firstEmailInteraction) return 'contacted';
+  return 'qualified';
+}
+
+// Derive source channel heuristically from available data
+function deriveSource(introPathCount, firstEmailInteraction) {
+  if (introPathCount > 0) return 'intro';
+  if (firstEmailInteraction) return 'cold_outreach';
+  return 'unknown';
+}
 
 function getCachedCompanies() {
   try {
@@ -131,17 +155,23 @@ export function useAttioCompanies() {
       const growthScore = getAttrValue(company, 'new_growth_score') ||
         getAttrValue(company, 'growth_score_rrw') || null;
 
-      // Determine funnel stage
-      const statusFunnel = STATUS_TO_FUNNEL[status] || 'sourcing';
-      let funnelStage;
-      if (statusFunnel === 'sourcing') {
-        funnelStage = hasOwner ? 'qualified' : 'universe';
-      } else {
-        funnelStage = statusFunnel;
-      }
+      // Interaction data (auto-tracked by Attio from email/calendar sync)
+      const firstEmailInteraction = getAttrValue(company, 'first_email_interaction');
+      const lastEmailInteraction = getAttrValue(company, 'last_email_interaction');
+      const firstCalendarInteraction = getAttrValue(company, 'first_calendar_interaction');
+      const lastCalendarInteraction = getAttrValue(company, 'last_calendar_interaction');
+      const firstInteraction = getAttrValue(company, 'first_interaction');
+      const lastInteraction = getAttrValue(company, 'last_interaction');
+
+      // Determine funnel stage using status + interaction signals
+      const funnelStage = determineFunnelStage(status, firstEmailInteraction, firstCalendarInteraction);
 
       // Created date for time-based filtering
       const createdAt = getAttrValue(company, 'created_at');
+
+      // Year parsing for time-period filters
+      const contactYear = parseInteractionYear(firstEmailInteraction);
+      const meetingYear = parseInteractionYear(firstCalendarInteraction);
 
       // Logo
       const logoUrl = getAttrValue(company, 'logo_url') || getAttrValue(company, 'logo_url_7');
@@ -152,24 +182,15 @@ export function useAttioCompanies() {
       // Feeling
       const feeling = getAttrValue(company, 'feeling');
 
-      // Source channel (will be populated once the 'source' field is created in Attio)
-      const rawSource = getAttrValue(company, 'source');
-      const source = rawSource ? (SOURCE_VALUE_MAP[rawSource] || 'unknown') : 'unknown';
-
-      // Interaction data (auto-tracked by Attio from email/calendar sync)
-      const firstEmailInteraction = getAttrValue(company, 'first_email_interaction');
-      const lastEmailInteraction = getAttrValue(company, 'last_email_interaction');
-      const firstCalendarInteraction = getAttrValue(company, 'first_calendar_interaction');
-      const lastCalendarInteraction = getAttrValue(company, 'last_calendar_interaction');
-      const firstInteraction = getAttrValue(company, 'first_interaction');
-      const lastInteraction = getAttrValue(company, 'last_interaction');
-
-      // Connection strength
-      const connectionStrength = getAttrValue(company, 'strongest_connection_strength');
-
       // Intro path (people who introduced this company)
       const introPathAttr = company?.values?.intro_path;
       const introPathCount = introPathAttr?.length || 0;
+
+      // Source channel — heuristic derivation (no source field in Attio)
+      const source = deriveSource(introPathCount, firstEmailInteraction);
+
+      // Connection strength
+      const connectionStrength = getAttrValue(company, 'strongest_connection_strength');
 
       // Notes
       const notes = getAttrValue(company, 'notes');
@@ -195,6 +216,8 @@ export function useAttioCompanies() {
         growthScore: growthScore ? parseFloat(growthScore) : null,
         source,
         createdAt,
+        contactYear,
+        meetingYear,
         logoUrl,
         industry,
         feeling,
@@ -225,7 +248,7 @@ export function useAttioCompanies() {
       try {
         if (!cached) setLoading(true);
 
-        const rawCompanies = await fetchAllCompanies();
+        const rawCompanies = await fetchOwnedCompanies();
         if (cancelled) return;
 
         const processed = processCompanies(rawCompanies);
