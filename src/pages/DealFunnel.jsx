@@ -363,28 +363,26 @@ export default function DealFunnel() {
               const width = maxWidth - (widthStep * index);
               const isSelected = selectedStage === stage.id;
 
-              {/* Universe stage with owner/region/industry breakdown */}
+              {/* Universe stage — entire rectangle is a segmented stacked bar */}
               if (stage.id === 'universe') {
                 return (
                   <div key={stage.id}>
                     <div
                       onClick={() => setSelectedStage(isSelected ? null : stage.id)}
-                      className={`mx-auto mb-1 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
+                      className={`mx-auto mb-1 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md overflow-hidden ${
                         isSelected
-                          ? 'border-[var(--rrw-red)] bg-[var(--rrw-red-subtle)]'
-                          : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
+                          ? 'border-[var(--rrw-red)]'
+                          : 'border-[var(--border-default)] hover:border-[var(--rrw-red)]'
                       }`}
-                      style={{ width: `${width}%` }}
+                      style={{ width: `${width}%`, backgroundColor: isSelected ? 'var(--rrw-red-subtle)' : 'var(--bg-secondary)' }}
                     >
-                      <div className="py-3 px-5 text-center">
-                        <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
-                        <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
-                        <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">{stage.description}</div>
-                      </div>
                       <UniverseBreakdown
                         byOwner={funnel.universeByOwner}
                         byRegion={funnel.universeByRegion}
                         byIndustry={funnel.universeByIndustry}
+                        totalCount={stage.count}
+                        stageName={stage.name}
+                        stageDescription={stage.description}
                       />
                     </div>
                   </div>
@@ -553,52 +551,128 @@ export default function DealFunnel() {
             })}
           </div>
 
-          {/* Email Performance */}
+          {/* Cold Email Analytics */}
           {emailMetrics.totalEmails > 0 && (
             <div className="border-t border-[var(--border-default)] pt-4 mb-4">
-              <h4 className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-3">Email Performance</h4>
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
-                    <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.totalEmails}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)]">Emails</div>
-                  </div>
-                  <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
-                    <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.emailToCallCount}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)]">→ Calls</div>
-                  </div>
-                  <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
-                    <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.emailToDealflowCount}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)]">→ Dealflow</div>
-                  </div>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span className="text-[var(--text-tertiary)]">Email → Call</span>
-                  <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{emailMetrics.emailToCallRate}%</span>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span className="text-[var(--text-tertiary)]">Email → Dealflow</span>
-                  <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{emailMetrics.emailToDealflowRate}%</span>
-                </div>
+              <h4 className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-3">Cold Email Analytics</h4>
 
-                {emailMetrics.byYear?.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
-                    <div className="text-[10px] text-[var(--text-quaternary)] mb-1.5">By Year</div>
-                    {emailMetrics.byYear.map(([year, data]) => (
-                      <div key={year} className="flex items-center justify-between text-[11px] py-1">
-                        <span className="text-[var(--text-tertiary)] font-medium">{year}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[var(--text-quaternary)]">{data.emails} emails</span>
-                          <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
-                          <span className="text-[var(--text-quaternary)]">{data.calls} calls</span>
-                          <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
-                          <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{data.dealflow} deals</span>
+              {/* Overall summary */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
+                  <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.totalEmails}</div>
+                  <div className="text-[9px] text-[var(--text-quaternary)]">Contacted</div>
+                </div>
+                <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
+                  <div className="text-lg font-bold text-emerald-500">{emailMetrics.emailToCallCount}</div>
+                  <div className="text-[9px] text-[var(--text-quaternary)]">Got Meeting</div>
+                </div>
+                <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
+                  <div className="text-lg font-bold" style={{ color: 'var(--rrw-red)' }}>{emailMetrics.emailToDealflowCount}</div>
+                  <div className="text-[9px] text-[var(--text-quaternary)]">Dealflow</div>
+                </div>
+              </div>
+
+              {/* Per-owner breakdown */}
+              {emailMetrics.ownerBreakdown?.length > 0 && (
+                <div className="space-y-3">
+                  {emailMetrics.ownerBreakdown.map(owner => (
+                    <div key={owner.name} className="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[13px] font-semibold text-[var(--text-primary)]">{owner.name}</span>
+                        <span className="text-[11px] text-[var(--text-quaternary)]">{owner.emailed} companies contacted</span>
+                      </div>
+
+                      {/* Mini funnel bar */}
+                      <div className="flex h-5 rounded overflow-hidden mb-2 text-[9px] font-medium">
+                        {owner.noResponse > 0 && (
+                          <div
+                            className="flex items-center justify-center text-white/90"
+                            style={{ width: `${(owner.noResponse / owner.emailed) * 100}%`, backgroundColor: '#9CA3AF', minWidth: owner.noResponse > 0 ? '12px' : 0 }}
+                            title={`No response: ${owner.noResponse}`}
+                          >
+                            {(owner.noResponse / owner.emailed) * 100 > 12 && owner.noResponse}
+                          </div>
+                        )}
+                        {(owner.responded - owner.gotMeeting) > 0 && (
+                          <div
+                            className="flex items-center justify-center text-white/90"
+                            style={{ width: `${((owner.responded - owner.gotMeeting) / owner.emailed) * 100}%`, backgroundColor: '#F59E0B', minWidth: '12px' }}
+                            title={`Responded (no meeting yet): ${owner.responded - owner.gotMeeting}`}
+                          >
+                            {((owner.responded - owner.gotMeeting) / owner.emailed) * 100 > 12 && (owner.responded - owner.gotMeeting)}
+                          </div>
+                        )}
+                        {(owner.gotMeeting - owner.gotDealflow) > 0 && (
+                          <div
+                            className="flex items-center justify-center text-white/90"
+                            style={{ width: `${((owner.gotMeeting - owner.gotDealflow) / owner.emailed) * 100}%`, backgroundColor: '#10B981', minWidth: '12px' }}
+                            title={`Got meeting: ${owner.gotMeeting - owner.gotDealflow}`}
+                          >
+                            {((owner.gotMeeting - owner.gotDealflow) / owner.emailed) * 100 > 12 && (owner.gotMeeting - owner.gotDealflow)}
+                          </div>
+                        )}
+                        {owner.gotDealflow > 0 && (
+                          <div
+                            className="flex items-center justify-center text-white/90"
+                            style={{ width: `${(owner.gotDealflow / owner.emailed) * 100}%`, backgroundColor: '#DC2626', minWidth: '12px' }}
+                            title={`Entered dealflow: ${owner.gotDealflow}`}
+                          >
+                            {(owner.gotDealflow / owner.emailed) * 100 > 12 && owner.gotDealflow}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Key rates */}
+                      <div className="grid grid-cols-3 gap-1 text-center">
+                        <div>
+                          <div className="text-[13px] font-bold text-amber-500">{owner.responseRate}%</div>
+                          <div className="text-[8px] text-[var(--text-quaternary)]">Response</div>
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-bold text-emerald-500">{owner.meetingRate}%</div>
+                          <div className="text-[8px] text-[var(--text-quaternary)]">Meeting</div>
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-bold" style={{ color: 'var(--rrw-red)' }}>{owner.dealflowRate}%</div>
+                          <div className="text-[8px] text-[var(--text-quaternary)]">Dealflow</div>
                         </div>
                       </div>
-                    ))}
+
+                      {/* Year breakdown */}
+                      {owner.byYear.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+                          {owner.byYear.map(([year, yd]) => (
+                            <div key={year} className="flex items-center justify-between text-[10px] py-0.5">
+                              <span className="text-[var(--text-tertiary)] font-medium w-8">{year}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[var(--text-quaternary)]">{yd.emailed}</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">sent</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">/</span>
+                                <span className="text-amber-500 font-medium">{yd.responded}</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">resp</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">/</span>
+                                <span className="text-emerald-500 font-medium">{yd.meetings}</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">met</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">/</span>
+                                <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{yd.dealflow}</span>
+                                <span className="text-[8px] text-[var(--text-quaternary)]">deal</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px]">
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#9CA3AF' }} /><span className="text-[var(--text-quaternary)]">No response</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#F59E0B' }} /><span className="text-[var(--text-quaternary)]">Responded</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#10B981' }} /><span className="text-[var(--text-quaternary)]">Meeting</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#DC2626' }} /><span className="text-[var(--text-quaternary)]">Dealflow</span></div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -885,7 +959,7 @@ const SEGMENT_TABS = [
   { id: 'industry', label: 'Industry' },
 ];
 
-function UniverseBreakdown({ byOwner, byRegion, byIndustry }) {
+function UniverseBreakdown({ byOwner, byRegion, byIndustry, totalCount, stageName, stageDescription }) {
   const [tab, setTab] = useState('owner');
   const data = tab === 'owner' ? byOwner : tab === 'region' ? byRegion : byIndustry;
   const top = data.slice(0, 6);
@@ -899,52 +973,69 @@ function UniverseBreakdown({ byOwner, byRegion, byIndustry }) {
   ];
 
   return (
-    <div className="border-t border-[var(--border-default)]">
-      {/* Tab toggle */}
-      <div className="flex items-center justify-center gap-0.5 py-2 px-3">
-        {SEGMENT_TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
-            className={`px-2.5 py-1 text-[10px] font-medium rounded transition-all ${
-              tab === t.id
-                ? 'bg-[var(--rrw-red)] text-white'
-                : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+    <div>
+      {/* Header: total count + stage name + toggle */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <div>
+          <div className="text-xl font-bold text-[var(--text-primary)] leading-tight">{totalCount.toLocaleString()}</div>
+          <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stageName}</div>
+          <div className="text-[10px] text-[var(--text-quaternary)]">{stageDescription}</div>
+        </div>
+        <div className="flex items-center gap-0.5 bg-[var(--bg-tertiary)] rounded-md p-0.5">
+          {SEGMENT_TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
+              className={`px-2 py-1 text-[10px] font-medium rounded transition-all ${
+                tab === t.id
+                  ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Segmented bar */}
-      <div className="flex h-2.5 mx-3 mb-2 rounded-full overflow-hidden gap-px">
-        {segments.map((s, i) => (
-          <div
-            key={i}
-            className="h-full transition-all duration-300"
-            style={{
-              width: `${Math.max((s.count / total) * 100, 1.5)}%`,
-              backgroundColor: s.color,
-              borderRadius: i === 0 ? '9999px 0 0 9999px' : i === segments.length - 1 ? '0 9999px 9999px 0' : '0',
-            }}
-            title={`${s.name}: ${s.count} (${s.pct}%)`}
-          />
-        ))}
+      {/* Stacked bar — each segment IS part of the rectangle */}
+      <div className="flex mx-0 overflow-hidden" style={{ minHeight: '44px' }}>
+        {segments.map((s, i) => {
+          const widthPct = Math.max((s.count / total) * 100, 2);
+          const isWide = widthPct > 10;
+          return (
+            <div
+              key={i}
+              className="relative flex flex-col items-center justify-center transition-all duration-300 group"
+              style={{
+                width: `${widthPct}%`,
+                backgroundColor: s.color,
+                opacity: 0.85,
+              }}
+              title={`${s.name}: ${s.count.toLocaleString()} (${s.pct}%)`}
+            >
+              {isWide && (
+                <>
+                  <span className="text-white text-[11px] font-bold leading-tight drop-shadow-sm">
+                    {s.count.toLocaleString()}
+                  </span>
+                  <span className="text-white/80 text-[9px] font-medium leading-tight truncate max-w-full px-1 drop-shadow-sm">
+                    {s.name}
+                  </span>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Legend */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 px-3 pb-2.5">
+      {/* Compact legend for narrow segments + full reference */}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-4 py-2">
         {segments.map((s, i) => (
-          <div key={i} className="flex items-center justify-between text-[10px]">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="text-[var(--text-secondary)] truncate">{s.name}</span>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-              <span className="font-semibold text-[var(--text-primary)]">{s.count.toLocaleString()}</span>
-              <span className="text-[var(--text-quaternary)]">{s.pct}%</span>
-            </div>
+          <div key={i} className="flex items-center gap-1 text-[10px]">
+            <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: s.color }} />
+            <span className="text-[var(--text-secondary)]">{s.name}</span>
+            <span className="font-semibold text-[var(--text-primary)]">{s.pct}%</span>
           </div>
         ))}
       </div>

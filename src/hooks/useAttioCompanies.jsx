@@ -173,28 +173,89 @@ function processDealEntries(entries, nameMap) {
 }
 
 // ─── Compute email performance metrics ───────────────────────────────
+// Statuses indicating the company progressed beyond outreach (founder responded)
+const RESPONDED_STATUSES = new Set([
+  'Met', 'To nurture', 'Dealflow', 'Due Dilligence', 'IC', 'Portfolio',
+  'Passed', 'To Decline', 'Analysed but too early',
+]);
+const DEALFLOW_STATUSES = new Set([
+  'Dealflow', 'Due Dilligence', 'IC', 'Portfolio', 'Passed', 'To Decline', 'Analysed but too early',
+]);
+
 function computeEmailMetrics(companies) {
   const withEmail = companies.filter(c => c.firstEmail);
-  const withCalendar = companies.filter(c => c.firstCalendar);
   const emailToCalendar = withEmail.filter(c => c.firstCalendar);
-  const dealflowStatuses = new Set([
-    'Dealflow', 'Due Dilligence', 'IC', 'Portfolio', 'Passed', 'To Decline', 'Analysed but too early',
-  ]);
-  const emailToDealflow = withEmail.filter(c => dealflowStatuses.has(c.status4));
+  const emailToDealflow = withEmail.filter(c => DEALFLOW_STATUSES.has(c.status4));
 
-  // By year
+  // By year (overall)
   const byYear = {};
   for (const c of withEmail) {
     const yr = c.emailYear || 'Unknown';
     if (!byYear[yr]) byYear[yr] = { emails: 0, calls: 0, dealflow: 0 };
     byYear[yr].emails++;
     if (c.firstCalendar) byYear[yr].calls++;
-    if (dealflowStatuses.has(c.status4)) byYear[yr].dealflow++;
+    if (DEALFLOW_STATUSES.has(c.status4)) byYear[yr].dealflow++;
   }
+
+  // Per-owner breakdown with response tracking
+  const byOwner = {};
+  for (const c of companies) {
+    for (const oid of c.ownerIds) {
+      const name = TEAM_MAP[oid] || 'Unknown';
+      if (!byOwner[name]) byOwner[name] = {
+        id: oid, total: 0, emailed: 0, responded: 0, noResponse: 0,
+        gotMeeting: 0, gotDealflow: 0, byYear: {},
+      };
+      byOwner[name].total++;
+      if (c.firstEmail) {
+        byOwner[name].emailed++;
+        const yr = c.emailYear || 'Unknown';
+        if (!byOwner[name].byYear[yr]) byOwner[name].byYear[yr] = { emailed: 0, responded: 0, meetings: 0, dealflow: 0 };
+        byOwner[name].byYear[yr].emailed++;
+
+        // "Responded" = got a calendar meeting OR status progressed beyond outreach
+        const hasResponse = c.firstCalendar || RESPONDED_STATUSES.has(c.status4);
+        if (hasResponse) {
+          byOwner[name].responded++;
+          byOwner[name].byYear[yr].responded++;
+        } else {
+          byOwner[name].noResponse++;
+        }
+        if (c.firstCalendar) {
+          byOwner[name].gotMeeting++;
+          byOwner[name].byYear[yr].meetings++;
+        }
+        if (DEALFLOW_STATUSES.has(c.status4)) {
+          byOwner[name].gotDealflow++;
+          byOwner[name].byYear[yr].dealflow++;
+        }
+      }
+    }
+  }
+
+  // Sort owners by emailed count desc
+  const ownerBreakdown = Object.entries(byOwner)
+    .filter(([, d]) => d.emailed > 0)
+    .sort(([, a], [, b]) => b.emailed - a.emailed)
+    .map(([name, d]) => ({
+      name,
+      id: d.id,
+      total: d.total,
+      emailed: d.emailed,
+      responded: d.responded,
+      noResponse: d.noResponse,
+      gotMeeting: d.gotMeeting,
+      gotDealflow: d.gotDealflow,
+      responseRate: Math.round((d.responded / d.emailed) * 100),
+      meetingRate: Math.round((d.gotMeeting / d.emailed) * 100),
+      dealflowRate: d.gotDealflow > 0 ? Math.round((d.gotDealflow / d.emailed) * 100) : 0,
+      byYear: Object.entries(d.byYear)
+        .filter(([yr]) => yr !== 'Unknown')
+        .sort(([a], [b]) => parseInt(b) - parseInt(a)),
+    }));
 
   return {
     totalEmails: withEmail.length,
-    totalCalls: withCalendar.length,
     emailToCallCount: emailToCalendar.length,
     emailToCallRate: withEmail.length > 0 ? Math.round((emailToCalendar.length / withEmail.length) * 100) : 0,
     emailToDealflowCount: emailToDealflow.length,
@@ -202,6 +263,7 @@ function computeEmailMetrics(companies) {
     byYear: Object.entries(byYear)
       .filter(([yr]) => yr !== 'Unknown')
       .sort(([a], [b]) => parseInt(b) - parseInt(a)),
+    ownerBreakdown,
   };
 }
 

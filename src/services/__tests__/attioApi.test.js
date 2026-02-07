@@ -179,6 +179,7 @@ describe('extractCompanyFields', () => {
       status4: 'Met',
       ownerIds: ['owner-1', 'owner-2'],
       firstEmail: '2025-01-15',
+      lastEmail: null,
       firstCalendar: '2025-02-01',
       domain: 'acme.com',
       logoUrl: 'https://logo.com/acme.png',

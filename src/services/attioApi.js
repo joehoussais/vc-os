@@ -190,6 +190,7 @@ export function extractCompanyFields(record) {
     .map(o => o.referenced_actor_id || o.workspace_membership_id)
     .filter(Boolean);
   const firstEmail = v.first_email_interaction?.[0]?.value || null;
+  const lastEmail = v.last_email_interaction?.[0]?.value || null;
   const firstCalendar = v.first_calendar_interaction?.[0]?.value || null;
   const domain = v.domains?.[0]?.domain || null;
   const logoUrl = v.logo_url?.[0]?.value || null;
@@ -203,6 +204,7 @@ export function extractCompanyFields(record) {
     status4,
     ownerIds,
     firstEmail,
+    lastEmail,
     firstCalendar,
     domain,
     logoUrl,
