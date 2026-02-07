@@ -185,27 +185,78 @@ export async function fetchListEntries() {
   return allEntries;
 }
 
-// Fetch deal flow entries via dedicated serverless function
-// The server paginates through Attio, strips heavy fields (email_content etc.),
-// and returns only the lightweight fields we need — ~50x smaller payload
-export async function fetchDealFlowEntries() {
-  const res = await fetch('/api/deal-funnel');
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Deal funnel API error: ${res.status}`);
-  }
-  const data = await res.json();
-  return data.deals || [];
+// Helper to extract only the fields we need from a deal flow entry (strips email_content etc.)
+function extractDealFields(entry) {
+  const ev = entry.entry_values || {};
+  const getVal = (slug) => {
+    const attr = ev[slug];
+    if (!attr || !attr.length) return null;
+    const v = attr[0];
+    if (v.value !== undefined) return v.value;
+    if (v.currency_value !== undefined) return v.currency_value;
+    if (v.status) return v.status.title;
+    if (v.option) return v.option.title;
+    return null;
+  };
+  const sourceAttr = ev.source;
+  const sourceWsId = sourceAttr?.[0]?.referenced_actor_id || sourceAttr?.[0]?.workspace_membership_id || null;
+
+  return {
+    entry_id: entry.entry_id,
+    record_id: entry.parent_record?.record_id || null,
+    satus: getVal('satus'),
+    max_status_5: getVal('max_status_5'),
+    source_type_8: getVal('source_type_8'),
+    amount_in_meu: getVal('amount_in_meu'),
+    founding_team: getVal('founding_team'),
+    created_at: getVal('created_at'),
+    source_ws_id: sourceWsId,
+  };
 }
 
-// Fetch qualified count via dedicated serverless function
-// The server paginates through 15,000+ Proactive Sourcing entries and returns just the count
-// CDN-cached for 1h server-side + localStorage cache client-side
+// Fetch all deal flow entries using PARALLEL pagination
+// First call gets page 1, then we fire all remaining pages in parallel
+export async function fetchDealFlowEntries() {
+  const BATCH = 500;
+
+  // First page — sequential to discover if there are more
+  const first = await attioQuery('/lists/deal_flow_4/entries/query', { limit: BATCH });
+  const firstBatch = first.data || [];
+  let allDeals = firstBatch.map(extractDealFields);
+
+  if (firstBatch.length < BATCH) return allDeals;
+
+  // Fire remaining pages in parallel (we know there are ~2500 entries = ~5 pages)
+  const offsets = [];
+  for (let off = BATCH; off < 5000; off += BATCH) {
+    offsets.push(off);
+  }
+
+  const pages = await Promise.all(
+    offsets.map(offset =>
+      attioQuery('/lists/deal_flow_4/entries/query', { limit: BATCH, offset })
+        .then(data => data.data || [])
+        .catch(() => []) // if offset is past the end, empty array
+    )
+  );
+
+  for (const batch of pages) {
+    if (batch.length === 0) break;
+    allDeals = allDeals.concat(batch.map(extractDealFields));
+    if (batch.length < BATCH) break;
+  }
+
+  return allDeals;
+}
+
+// Qualified count: localStorage cache (1h) + hardcoded fallback for instant display
+// The Proactive Sourcing list has 15,000+ entries — too slow to count every time
 const QUALIFIED_CACHE_KEY = 'attio-qualified-count';
 const QUALIFIED_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const QUALIFIED_FALLBACK = 15000; // reasonable estimate when we can't count
 
 export async function fetchProactiveSourcingCount() {
-  // Check localStorage first
+  // Check localStorage first — instant
   try {
     const raw = localStorage.getItem(QUALIFIED_CACHE_KEY);
     if (raw) {
@@ -214,20 +265,47 @@ export async function fetchProactiveSourcingCount() {
     }
   } catch { /* ignore */ }
 
-  const res = await fetch('/api/qualified-count');
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Qualified count API error: ${res.status}`);
-  }
-  const data = await res.json();
-  const count = data.count || 0;
+  // Count via parallel pagination through the proxy
+  const BATCH = 500;
+  // Fire first batch to check if list is accessible
+  try {
+    const first = await attioQuery('/lists/old_2_6/entries/query', { limit: BATCH });
+    const firstLen = (first.data || []).length;
+    if (firstLen < BATCH) {
+      setCachedQualifiedCount(firstLen);
+      return firstLen;
+    }
 
-  // Cache in localStorage
+    // Fire remaining pages in parallel (up to 40 pages = 20,000 entries max)
+    const offsets = [];
+    for (let off = BATCH; off < 20000; off += BATCH) {
+      offsets.push(off);
+    }
+    const pages = await Promise.all(
+      offsets.map(offset =>
+        attioQuery('/lists/old_2_6/entries/query', { limit: BATCH, offset })
+          .then(data => (data.data || []).length)
+          .catch(() => 0)
+      )
+    );
+
+    let total = firstLen;
+    for (const len of pages) {
+      total += len;
+      if (len < BATCH) break;
+    }
+
+    setCachedQualifiedCount(total);
+    return total;
+  } catch {
+    return QUALIFIED_FALLBACK;
+  }
+}
+
+function setCachedQualifiedCount(count) {
   try {
     localStorage.setItem(QUALIFIED_CACHE_KEY, JSON.stringify({ count, timestamp: Date.now() }));
   } catch { /* ignore */ }
-
-  return count;
 }
 
 // Update a single field on a coverage list entry (for toggling received/in_scope)
