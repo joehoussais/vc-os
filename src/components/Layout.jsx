@@ -64,8 +64,8 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, user
               className="h-6 w-auto"
             />
             <div className="hidden md:block h-4 w-px bg-[var(--border-default)]" />
-            <span className="hidden md:block text-[13px] font-semibold tracking-wide uppercase text-[var(--text-tertiary)]">
-              VC Operating System
+            <span className="hidden md:block text-[13px] font-bold tracking-wide text-[var(--text-primary)]" style={{ fontFamily: 'Montserrat, sans-serif' }}>
+              VC OS: Red River West Operations Console
             </span>
           </div>
 

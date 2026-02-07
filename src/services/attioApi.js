@@ -308,47 +308,66 @@ function setCachedQualifiedCount(count) {
   } catch { /* ignore */ }
 }
 
-// Fetch deal record names + owners in bulk using $in filter
-// Returns Map<record_id, { name, ownerIds[] }>
-// Batches record IDs into chunks of 50 and fetches in parallel
+// Fetch deal record names, owners, and company logos in bulk
+// Returns Map<record_id, { name, ownerIds[], domain, logoUrl }>
 export async function fetchDealRecordNames(recordIds) {
   if (!recordIds.length) return new Map();
 
   const unique = [...new Set(recordIds)];
   const nameMap = new Map();
-  const CHUNK = 25; // Keep chunks small to avoid rate limits
 
-  // Split into chunks
-  const chunks = [];
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    chunks.push(unique.slice(i, i + CHUNK));
-  }
+  try {
+    // Step 1: Fetch deal records (typically ≤13 for kanban)
+    const res = await attioQuery('/objects/deals_2/records/query', {
+      filter: { record_id: { $in: unique } },
+      limit: unique.length,
+    });
+    const records = res.data || [];
+    console.log(`[fetchDealRecordNames] Got ${records.length} deal records`);
 
-  console.log(`[fetchDealRecordNames] ${unique.length} IDs → ${chunks.length} chunks`);
-
-  // Fetch chunks sequentially to avoid rate limits on Netlify
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    try {
-      const res = await attioQuery('/objects/deals_2/records/query', {
-        filter: { record_id: { $in: chunk } },
-        limit: chunk.length,
-      });
-      const records = res.data || [];
-      console.log(`[fetchDealRecordNames] Chunk ${i + 1}/${chunks.length}: got ${records.length} records`);
-      for (const record of records) {
-        const id = record.id?.record_id;
-        if (!id) continue;
-        const vals = record.values || {};
-        const dealId = vals.deal_id?.[0]?.value || null;
-        const ownerIds = (vals.owner || [])
-          .map(o => o.referenced_actor_id || o.workspace_membership_id)
-          .filter(Boolean);
-        nameMap.set(id, { name: dealId, ownerIds });
-      }
-    } catch (err) {
-      console.error(`[fetchDealRecordNames] Chunk ${i + 1} FAILED:`, err.message);
+    const companyIds = [];
+    for (const record of records) {
+      const id = record.id?.record_id;
+      if (!id) continue;
+      const vals = record.values || {};
+      const dealId = vals.deal_id?.[0]?.value || null;
+      const ownerIds = (vals.owner || [])
+        .map(o => o.referenced_actor_id || o.workspace_membership_id)
+        .filter(Boolean);
+      const companyRecordId = vals.associated_company_domain?.[0]?.target_record_id || null;
+      nameMap.set(id, { name: dealId, ownerIds, companyRecordId, domain: null, logoUrl: null });
+      if (companyRecordId) companyIds.push(companyRecordId);
     }
+
+    // Step 2: Fetch company records for domains + logos
+    const uniqueCompanyIds = [...new Set(companyIds)];
+    if (uniqueCompanyIds.length > 0) {
+      const compRes = await attioQuery('/objects/companies/records/query', {
+        filter: { record_id: { $in: uniqueCompanyIds } },
+        limit: uniqueCompanyIds.length,
+      });
+      const companyMap = new Map();
+      for (const c of (compRes.data || [])) {
+        const cid = c.id?.record_id;
+        if (!cid) continue;
+        const cv = c.values || {};
+        const domain = cv.domains?.[0]?.domain || null;
+        const logoUrl = cv.logo_url?.[0]?.value || null;
+        companyMap.set(cid, { domain, logoUrl });
+      }
+      console.log(`[fetchDealRecordNames] Got ${companyMap.size} company domains`);
+
+      // Merge company data into deal name map
+      for (const [, info] of nameMap) {
+        if (info.companyRecordId && companyMap.has(info.companyRecordId)) {
+          const comp = companyMap.get(info.companyRecordId);
+          info.domain = comp.domain;
+          info.logoUrl = comp.logoUrl;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[fetchDealRecordNames] FAILED:', err.message);
   }
 
   console.log(`[fetchDealRecordNames] Total resolved: ${nameMap.size}/${unique.length}`);

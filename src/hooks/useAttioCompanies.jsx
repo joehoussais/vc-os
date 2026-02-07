@@ -136,16 +136,20 @@ export function useAttioCompanies() {
       // Source channel
       const source = sourceType || 'unknown';
 
-      // Deal name + owner IDs from the deals_2 record
+      // Deal name + owner IDs + company domain from the deals_2 record
       const recordInfo = nameMap?.get(entry.record_id);
       const name = recordInfo?.name || entry.record_id?.substring(0, 8) || 'Unknown Deal';
       const ownerIds = recordInfo?.ownerIds || [];
+      const domain = recordInfo?.domain || null;
+      const logoUrl = recordInfo?.logoUrl || null;
 
       return {
         id: entry.entry_id,
         dealRecordId: entry.record_id,
         name,
         ownerIds,
+        domain,
+        logoUrl,
         satus,
         maxStatus5,
         highestStage,

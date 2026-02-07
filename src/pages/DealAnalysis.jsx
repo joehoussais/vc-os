@@ -213,7 +213,18 @@ function KanbanCardContent({ deal, assessment, onClick, isDragging }) {
       }`}
     >
       <div className="flex items-start gap-2.5 mb-2.5">
-        <div className="w-7 h-7 rounded bg-[var(--bg-tertiary)] flex items-center justify-center text-[11px] font-bold text-[var(--text-tertiary)] flex-shrink-0 mt-0.5">
+        {deal.domain ? (
+          <img
+            src={`https://www.google.com/s2/favicons?domain=${deal.domain}&sz=64`}
+            alt=""
+            className="w-7 h-7 rounded flex-shrink-0 mt-0.5 bg-[var(--bg-tertiary)]"
+            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+          />
+        ) : null}
+        <div
+          className="w-7 h-7 rounded bg-[var(--bg-tertiary)] items-center justify-center text-[11px] font-bold text-[var(--text-tertiary)] flex-shrink-0 mt-0.5"
+          style={{ display: deal.domain ? 'none' : 'flex' }}
+        >
           {shortName.charAt(0)}
         </div>
         <div className="min-w-0 flex-1">
@@ -319,8 +330,10 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
       <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-4 p-5 border-b border-[var(--border-default)]">
-          <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)]">
-            {(deal.name?.split(' - ')[0] || 'D').charAt(0)}
+          <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)] overflow-hidden">
+            {deal.domain ? (
+              <img src={`https://www.google.com/s2/favicons?domain=${deal.domain}&sz=128`} alt="" className="w-10 h-10 object-contain" />
+            ) : (deal.name?.split(' - ')[0] || 'D').charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{deal.name}</h2>
