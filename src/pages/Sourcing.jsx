@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend } from 'chart.js';
-import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
 import { chartColors } from '../data/attioData';
 import { useAttioCoverage } from '../hooks/useAttioCoverage';
 import { updateListEntry } from '../services/attioApi';
@@ -75,6 +75,15 @@ const OUTCOME_PIE_COLORS = {
   'Tried, No Response': '#f59e0b', // amber-500
   "Saw, Didn't Try": '#9ca3af',  // gray-400
   'Completely Missed': '#ef4444', // red-500
+};
+
+const REGION_FLAGS = {
+  'France': '\u{1F1EB}\u{1F1F7}',
+  'Germany': '\u{1F1E9}\u{1F1EA}',
+  'Nordics': '\u{1F1F8}\u{1F1EA}',
+  'Southern Europe': '\u{1F1EA}\u{1F1F8}',
+  'Eastern Europe': '\u{1F1F5}\u{1F1F1}',
+  'Other': '\u{1F1EC}\u{1F1E7}',
 };
 
 // ─── OBJECTIVE Market Score ───────────────────────────────
@@ -448,7 +457,7 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4 mb-4">
         <div className="flex items-center gap-4 flex-wrap">
           <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilters({ ...filters, owner: v })} options={[{ value: 'all', label: 'All Owners' }, ...TEAM_MEMBERS.map(m => ({ value: m.id, label: m.name }))]} />
-          <FilterSelect label="Country" value={filters.country} onChange={(v) => setFilters({ ...filters, country: v })} options={[{ value: 'all', label: 'All Countries' }, { value: 'France', label: 'France' }, { value: 'Germany', label: 'Germany & Benelux' }, { value: 'Nordics', label: 'Nordics' }, { value: 'Southern Europe', label: 'Southern Europe' }, { value: 'Eastern Europe', label: 'Eastern Europe' }, { value: 'Other', label: 'Other (UK, etc.)' }]} />
+          <FilterSelect label="Country" value={filters.country} onChange={(v) => setFilters({ ...filters, country: v })} options={[{ value: 'all', label: 'All Countries' }, { value: 'France', label: '\u{1F1EB}\u{1F1F7} France' }, { value: 'Germany', label: '\u{1F1E9}\u{1F1EA} Germany & Benelux' }, { value: 'Nordics', label: '\u{1F1F8}\u{1F1EA} Nordics' }, { value: 'Southern Europe', label: '\u{1F1EA}\u{1F1F8} Southern Europe' }, { value: 'Eastern Europe', label: '\u{1F1F5}\u{1F1F1} Eastern Europe' }, { value: 'Other', label: '\u{1F1EC}\u{1F1E7} Other (UK, etc.)' }]} />
           <FilterSelect label="Stage" value={filters.stage} onChange={(v) => setFilters({ ...filters, stage: v })} options={[{ value: 'all', label: 'All Stages' }, { value: 'Pre-Seed', label: 'Pre-Seed' }, { value: 'Seed', label: 'Seed' }, { value: 'Series A', label: 'Series A' }, { value: 'Series B', label: 'Series B' }, { value: 'Series C', label: 'Series C' }, { value: 'Venture', label: 'Venture' }]} />
           <FilterSelect label="From" value={effectiveFrom} onChange={(v) => setFilters({ ...filters, from: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
           <FilterSelect label="To" value={effectiveTo} onChange={(v) => setFilters({ ...filters, to: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
@@ -505,16 +514,54 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
 
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
-          <div><h3 className="font-semibold text-[var(--text-primary)]">Outcome Summary</h3><p className="text-xs text-[var(--text-tertiary)]">Derived from Attio status</p></div>
+          <div><h3 className="font-semibold text-[var(--text-primary)]">Outcome Summary</h3><p className="text-xs text-[var(--text-tertiary)]">How we engaged with {deals.length} in-scope deals</p></div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {Object.entries(pieData.outcomeData).sort((a, b) => b[1] - a[1]).map(([outcome, count]) => (
-            <div key={outcome} className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
-              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>{outcome}</span>
-              <div className="text-xl font-bold text-[var(--text-primary)]">{count}</div>
-              <div className="text-[11px] text-[var(--text-quaternary)]">{deals.length > 0 ? Math.round((count / deals.length) * 100) : 0}%</div>
+        <div className="flex flex-col lg:flex-row items-center gap-6">
+          <div className="w-56 h-56 relative shrink-0">
+            <Doughnut
+              data={{
+                labels: Object.keys(pieData.outcomeData),
+                datasets: [{
+                  data: Object.values(pieData.outcomeData),
+                  backgroundColor: Object.keys(pieData.outcomeData).map(k => OUTCOME_PIE_COLORS[k] || '#6b7280'),
+                  borderWidth: 0,
+                  hoverOffset: 4,
+                }],
+              }}
+              options={{
+                responsive: true, maintainAspectRatio: false, cutout: '62%',
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => {
+                        const pct = deals.length > 0 ? Math.round((ctx.parsed / deals.length) * 100) : 0;
+                        return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                      }
+                    }
+                  }
+                }
+              }}
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div className="text-2xl font-bold text-[var(--text-primary)]">{stats.coverage}%</div>
+              <div className="text-[11px] text-[var(--text-tertiary)]">coverage</div>
             </div>
-          ))}
+          </div>
+          <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
+            {Object.entries(pieData.outcomeData).sort((a, b) => b[1] - a[1]).map(([outcome, count]) => {
+              const pct = deals.length > 0 ? Math.round((count / deals.length) * 100) : 0;
+              return (
+                <div key={outcome} className="flex items-center gap-2 py-1">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: OUTCOME_PIE_COLORS[outcome] || '#6b7280' }} />
+                  <div className="min-w-0">
+                    <div className="text-[12px] text-[var(--text-secondary)] truncate">{outcome}</div>
+                    <div className="text-[13px] font-semibold text-[var(--text-primary)]">{count} <span className="font-normal text-[var(--text-quaternary)]">({pct}%)</span></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </>
@@ -1021,9 +1068,10 @@ function FunnelArrow({ pct }) {
 
 function CoverageCard({ region, data }) {
   const coverageColor = data.coverage >= 80 ? 'text-emerald-500' : data.coverage >= 60 ? 'text-amber-500' : 'text-red-500';
+  const flag = REGION_FLAGS[region];
   return (
     <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
-      <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{region}</div>
+      <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{flag && <span className="mr-1">{flag}</span>}{region}</div>
       <div className={`text-xl font-bold ${coverageColor}`}>{data.coverage}%</div>
       <div className="text-[11px] text-[var(--text-quaternary)]">{data.covered}/{data.total} covered</div>
     </div>
