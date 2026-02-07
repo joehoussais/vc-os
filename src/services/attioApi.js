@@ -316,41 +316,42 @@ export async function fetchDealRecordNames(recordIds) {
 
   const unique = [...new Set(recordIds)];
   const nameMap = new Map();
-  const CHUNK = 50; // Attio $in filter chunk size
+  const CHUNK = 25; // Keep chunks small to avoid rate limits
 
-  // Split into chunks and fetch all in parallel
+  // Split into chunks
   const chunks = [];
   for (let i = 0; i < unique.length; i += CHUNK) {
     chunks.push(unique.slice(i, i + CHUNK));
   }
 
-  const results = await Promise.all(
-    chunks.map(chunk =>
-      attioQuery('/objects/deals_2/records/query', {
-        filter: { record_id: { $in: chunk } },
-        limit: CHUNK,
-      })
-        .then(res => res.data || [])
-        .catch(err => {
-          console.warn('Failed to fetch deal names chunk:', err.message);
-          return [];
-        })
-    )
-  );
+  console.log(`[fetchDealRecordNames] ${unique.length} IDs → ${chunks.length} chunks`);
 
-  for (const records of results) {
-    for (const record of records) {
-      const id = record.id?.record_id;
-      if (!id) continue;
-      const vals = record.values || {};
-      const dealId = vals.deal_id?.[0]?.value || null;
-      const ownerIds = (vals.owner || [])
-        .map(o => o.referenced_actor_id || o.workspace_membership_id)
-        .filter(Boolean);
-      nameMap.set(id, { name: dealId, ownerIds });
+  // Fetch chunks sequentially to avoid rate limits on Netlify
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    try {
+      const res = await attioQuery('/objects/deals_2/records/query', {
+        filter: { record_id: { $in: chunk } },
+        limit: chunk.length,
+      });
+      const records = res.data || [];
+      console.log(`[fetchDealRecordNames] Chunk ${i + 1}/${chunks.length}: got ${records.length} records`);
+      for (const record of records) {
+        const id = record.id?.record_id;
+        if (!id) continue;
+        const vals = record.values || {};
+        const dealId = vals.deal_id?.[0]?.value || null;
+        const ownerIds = (vals.owner || [])
+          .map(o => o.referenced_actor_id || o.workspace_membership_id)
+          .filter(Boolean);
+        nameMap.set(id, { name: dealId, ownerIds });
+      }
+    } catch (err) {
+      console.error(`[fetchDealRecordNames] Chunk ${i + 1} FAILED:`, err.message);
     }
   }
 
+  console.log(`[fetchDealRecordNames] Total resolved: ${nameMap.size}/${unique.length}`);
   return nameMap;
 }
 
@@ -466,7 +467,7 @@ export function getLocationCountryCode(record, slug) {
 }
 
 // Deal funnel session cache
-const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache';
+const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache-v2'; // v2: names resolved
 
 export function getCachedDealFunnel() {
   try {

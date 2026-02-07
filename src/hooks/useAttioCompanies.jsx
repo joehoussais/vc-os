@@ -185,16 +185,23 @@ export function useAttioCompanies() {
 
         if (cancelled) return;
 
-        // Phase 2: Fetch deal record names for active deals only (much smaller set)
-        // Only fetch names for non-declined deals to keep it fast
-        const activeRecordIds = entries
-          .filter(e => e.satus !== 'Declined' && e.satus !== 'To decline')
+        // Phase 2: Fetch deal record names ONLY for Met + Committee deals
+        // These are the only ones displayed in Deal Analysis kanban
+        // Fetching all ~1000 active deals would trigger rate limits
+        const KANBAN_STATUSES = new Set(['Met', 'Committee']);
+        const kanbanRecordIds = entries
+          .filter(e => KANBAN_STATUSES.has(e.satus))
           .map(e => e.record_id)
           .filter(Boolean);
 
         // Deduplicate
-        const uniqueIds = [...new Set(activeRecordIds)];
-        const nameMap = await fetchDealRecordNames(uniqueIds).catch(() => new Map());
+        const uniqueIds = [...new Set(kanbanRecordIds)];
+        console.log(`[DealFunnel] Fetching names for ${uniqueIds.length} kanban deals`);
+        const nameMap = await fetchDealRecordNames(uniqueIds).catch(err => {
+          console.error('[DealFunnel] fetchDealRecordNames failed:', err);
+          return new Map();
+        });
+        console.log(`[DealFunnel] Got ${nameMap.size} names from API`);
 
         if (cancelled) return;
 
