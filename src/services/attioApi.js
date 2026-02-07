@@ -308,6 +308,50 @@ function setCachedQualifiedCount(count) {
   } catch { /* ignore */ }
 }
 
+// Fetch deal record names + owners in bulk
+// Returns Map<record_id, { name, ownerIds[] }>
+export async function fetchDealRecordNames(recordIds) {
+  if (!recordIds.length) return new Map();
+
+  // Attio records/query with filter by record IDs — fetch in batches of 100
+  const BATCH = 100;
+  const nameMap = new Map();
+
+  const batches = [];
+  for (let i = 0; i < recordIds.length; i += BATCH) {
+    batches.push(recordIds.slice(i, i + BATCH));
+  }
+
+  const results = await Promise.all(
+    batches.map(batch =>
+      attioQuery('/objects/deals_2/records/query', {
+        filter: { record_id: { $in: batch } },
+        limit: BATCH,
+      }).catch(() => ({ data: [] }))
+    )
+  );
+
+  for (const res of results) {
+    for (const record of (res.data || [])) {
+      const id = record.id?.record_id;
+      if (!id) continue;
+      const vals = record.values || {};
+
+      // Extract deal_id (name)
+      const dealId = vals.deal_id?.[0]?.value || null;
+
+      // Extract owner IDs
+      const ownerIds = (vals.owner || [])
+        .map(o => o.referenced_actor_id || o.workspace_membership_id)
+        .filter(Boolean);
+
+      nameMap.set(id, { name: dealId, ownerIds });
+    }
+  }
+
+  return nameMap;
+}
+
 // Update a single field on a coverage list entry (for toggling received/in_scope)
 export async function updateListEntry(entryId, fieldSlug, value) {
   return attioQuery(`/lists/deal_coverage_6/entries/${entryId}`, {

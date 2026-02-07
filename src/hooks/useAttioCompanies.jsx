@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   fetchDealFlowEntries,
   fetchProactiveSourcingCount,
+  fetchDealRecordNames,
   getCachedDealFunnel,
   setCachedDealFunnel,
 } from '../services/attioApi';
@@ -43,15 +44,19 @@ const MAX_STATUS_TO_STAGE = {
   'Screened': 'screened',
   'In depth analysis': 'analysis',
   'LOI': 'analysis', // LOI is part of in-depth analysis stage
+  'Memo started': 'analysis',
 };
 
 // Map satus (pipeline) values to funnel stage IDs for current status
 const SATUS_TO_STAGE = {
   'Dealflow qualification': 'dealflow',
+  'To Meet': 'dealflow',
+  'Coming soon': 'dealflow',
   'Met': 'met',
   'Committee': 'committee',
   'Won / Portfolio': 'portfolio',
-  'Standby': 'dealflow', // Standby is still in pipeline
+  'Standby': 'dealflow',
+  'Unqualified': 'dealflow',
   'To decline': 'declined',
   'Declined': 'declined',
 };
@@ -101,7 +106,6 @@ function getCurrentStage(satus) {
 // Parse created_at to extract year
 function parseCreatedYear(createdAt) {
   if (!createdAt) return null;
-  // Attio timestamps can be ISO format or "Thursday, 2025-12-18 17:04:01"
   const match = createdAt.match(/(\d{4})/);
   return match ? parseInt(match[1], 10) : null;
 }
@@ -113,9 +117,8 @@ export function useAttioCompanies() {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(!!cached);
 
-  // Process entries from the server-side /api/deal-funnel endpoint
-  // Each entry is already a flat object: { entry_id, record_id, satus, max_status_5, source_type_8, amount_in_meu, founding_team, created_at, source_ws_id }
-  const processEntries = useCallback((entries, qualifiedCount) => {
+  // Process entries: merge deal entries with deal record names
+  const processEntries = useCallback((entries, qualifiedCount, nameMap) => {
     const deals = entries.map(entry => {
       const satus = entry.satus;
       const maxStatus5 = entry.max_status_5;
@@ -130,12 +133,19 @@ export function useAttioCompanies() {
       const isActive = !isDeclined;
       const createdYear = parseCreatedYear(entry.created_at);
 
-      // Source channel (use raw source_type_8 value as ID, fallback to 'unknown')
+      // Source channel
       const source = sourceType || 'unknown';
+
+      // Deal name + owner IDs from the deals_2 record
+      const recordInfo = nameMap?.get(entry.record_id);
+      const name = recordInfo?.name || entry.record_id?.substring(0, 8) || 'Unknown Deal';
+      const ownerIds = recordInfo?.ownerIds || [];
 
       return {
         id: entry.entry_id,
         dealRecordId: entry.record_id,
+        name,
+        ownerIds,
         satus,
         maxStatus5,
         highestStage,
@@ -167,7 +177,7 @@ export function useAttioCompanies() {
       try {
         if (!cached) setLoading(true);
 
-        // Fetch both data sources in parallel
+        // Phase 1: Fetch deal entries + qualified count in parallel
         const [entries, qualifiedCount] = await Promise.all([
           fetchDealFlowEntries(),
           fetchProactiveSourcingCount(),
@@ -175,7 +185,20 @@ export function useAttioCompanies() {
 
         if (cancelled) return;
 
-        const processed = processEntries(entries, qualifiedCount);
+        // Phase 2: Fetch deal record names for active deals only (much smaller set)
+        // Only fetch names for non-declined deals to keep it fast
+        const activeRecordIds = entries
+          .filter(e => e.satus !== 'Declined' && e.satus !== 'To decline')
+          .map(e => e.record_id)
+          .filter(Boolean);
+
+        // Deduplicate
+        const uniqueIds = [...new Set(activeRecordIds)];
+        const nameMap = await fetchDealRecordNames(uniqueIds).catch(() => new Map());
+
+        if (cancelled) return;
+
+        const processed = processEntries(entries, qualifiedCount, nameMap);
 
         if (!cancelled) {
           setDealFlowData(processed);
@@ -197,11 +220,7 @@ export function useAttioCompanies() {
     return () => { cancelled = true; };
   }, [processEntries]);
 
-  // Backward compatibility: DealAnalysis.jsx still imports { companies }
-  // Provide an empty array so it doesn't crash (DealAnalysis will be updated separately)
-  const companies = [];
-
-  return { dealFlowData, companies, loading, error, isLive };
+  return { dealFlowData, loading, error, isLive };
 }
 
 export default useAttioCompanies;

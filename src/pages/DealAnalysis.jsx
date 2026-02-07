@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAttioCompanies } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 import { granolaMeetings } from '../data/mockData';
@@ -66,10 +66,12 @@ const ASSESSMENT_THEMES = [
   },
 ];
 
+// Kanban columns — map Attio satus values to columns
 const KANBAN_STAGES = [
-  { id: 'dealflow', label: 'Deal Flow', color: '#3B82F6' },
-  { id: 'analysis', label: 'In-Depth Analysis', color: '#8B5CF6' },
-  { id: 'committee', label: 'Committee (IC)', color: '#F59E0B' },
+  { id: 'dealflow', label: 'Deal Flow', color: '#3B82F6', satusValues: ['Dealflow qualification', 'To Meet', 'Coming soon', 'Standby'] },
+  { id: 'met', label: 'Met', color: '#10B981', satusValues: ['Met'] },
+  { id: 'analysis', label: 'In-Depth Analysis', color: '#8B5CF6', satusValues: [] }, // populated via max_status_5
+  { id: 'committee', label: 'Committee', color: '#F59E0B', satusValues: ['Committee'] },
 ];
 
 const ratingOptions = [1, 2, 3, 4, 6, 7, 8, 9, 10];
@@ -107,7 +109,61 @@ function completionColor(pct) {
   return 'var(--border-default)';
 }
 
+// Determine kanban column from deal data
+function getKanbanColumn(deal) {
+  const { satus, maxStatus5 } = deal;
+  // In-depth analysis: determined by max_status_5
+  if (maxStatus5 === 'In depth analysis' || maxStatus5 === 'LOI' || maxStatus5 === 'Memo started') {
+    // Only if NOT already past to committee/portfolio/declined
+    if (satus !== 'Committee' && satus !== 'Won / Portfolio' && satus !== 'Declined' && satus !== 'To decline') {
+      return 'analysis';
+    }
+  }
+  if (satus === 'Committee') return 'committee';
+  if (satus === 'Met') return 'met';
+  return 'dealflow';
+}
+
 // ─── Components ──────────────────────────────────────────────────────
+
+function GaugeRing({ pct, size = 48, strokeWidth = 3 }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (pct / 100) * circumference;
+  const color = completionColor(pct);
+
+  return (
+    <svg width={size} height={size} className="flex-shrink-0">
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none"
+        stroke="var(--border-subtle)"
+        strokeWidth={strokeWidth}
+      />
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        className="transition-all duration-500"
+      />
+      <text
+        x={size / 2} y={size / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={color}
+        fontSize={size < 40 ? 9 : 11}
+        fontWeight="700"
+      >
+        {pct}%
+      </text>
+    </svg>
+  );
+}
 
 function MiniProgressBar({ pct, label }) {
   return (
@@ -126,12 +182,16 @@ function MiniProgressBar({ pct, label }) {
   );
 }
 
-function KanbanCard({ company, assessment, onClick }) {
-  const ownerNames = company.ownerIds
+function KanbanCard({ deal, assessment, onClick }) {
+  const ownerNames = (deal.ownerIds || [])
     .map(id => TEAM_MAP[id])
     .filter(Boolean);
 
   const overall = getOverallCompletion(assessment);
+
+  // Extract short company name from deal name (e.g. "Imperia - Series A" → "Imperia")
+  const shortName = deal.name?.split(' - ')[0] || deal.name || 'Unknown';
+  const roundInfo = deal.name?.split(' - ').slice(1).join(' - ') || '';
 
   return (
     <div
@@ -140,66 +200,72 @@ function KanbanCard({ company, assessment, onClick }) {
     >
       {/* Header */}
       <div className="flex items-start gap-2.5 mb-2.5">
-        {company.logoUrl ? (
-          <img src={company.logoUrl} alt="" className="w-7 h-7 rounded object-contain bg-white flex-shrink-0 mt-0.5" />
-        ) : (
-          <div className="w-7 h-7 rounded bg-[var(--bg-tertiary)] flex items-center justify-center text-[11px] font-bold text-[var(--text-tertiary)] flex-shrink-0 mt-0.5">
-            {company.name?.charAt(0)}
-          </div>
-        )}
+        <div className="w-7 h-7 rounded bg-[var(--bg-tertiary)] flex items-center justify-center text-[11px] font-bold text-[var(--text-tertiary)] flex-shrink-0 mt-0.5">
+          {shortName.charAt(0)}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[13px] text-[var(--text-primary)] truncate leading-tight">
-            {company.name}
+            {shortName}
           </div>
+          {roundInfo && (
+            <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5 truncate">
+              {roundInfo}
+            </div>
+          )}
           {ownerNames.length > 0 && (
             <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
               {ownerNames.join(', ')}
             </div>
           )}
         </div>
-        {/* Overall completion badge */}
-        <div
-          className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold border-2"
-          style={{
-            borderColor: completionColor(overall),
-            color: completionColor(overall),
-          }}
-        >
-          {overall}%
-        </div>
+        {/* Overall completion gauge */}
+        <GaugeRing pct={overall} size={36} strokeWidth={2.5} />
       </div>
 
-      {/* Mini progress bars */}
+      {/* Mini progress bars per assessment theme */}
       <div className="space-y-1">
         {ASSESSMENT_THEMES.map(theme => {
           const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
-          return <MiniProgressBar key={theme.id} pct={pct} label={theme.label.split(' ')[0]} />;
+          return (
+            <MiniProgressBar
+              key={theme.id}
+              pct={pct}
+              label={`${theme.icon} ${theme.label.split(' / ')[0].split(' ')[0]}`}
+            />
+          );
         })}
       </div>
+
+      {/* Amount if available */}
+      {deal.amountInMeu != null && deal.amountInMeu > 0 && (
+        <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] text-[10px] text-[var(--text-quaternary)]">
+          Round size: <span className="font-medium text-[var(--text-secondary)]">{deal.amountInMeu}M€</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function KanbanColumn({ stage, companies, assessments, onCardClick }) {
+function KanbanColumn({ stage, deals, assessments, onCardClick }) {
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
         <h4 className="text-[13px] font-semibold text-[var(--text-primary)]">{stage.label}</h4>
         <span className="text-[11px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded-md">
-          {companies.length}
+          {deals.length}
         </span>
       </div>
       <div className="space-y-2.5 min-h-[100px]">
-        {companies.map(c => (
+        {deals.map(d => (
           <KanbanCard
-            key={c.id}
-            company={c}
-            assessment={assessments[c.id]}
-            onClick={() => onCardClick(c)}
+            key={d.id}
+            deal={d}
+            assessment={assessments[d.id]}
+            onClick={() => onCardClick(d)}
           />
         ))}
-        {companies.length === 0 && (
+        {deals.length === 0 && (
           <div className="text-center py-8 text-[11px] text-[var(--text-quaternary)] border border-dashed border-[var(--border-subtle)] rounded-lg">
             No deals at this stage
           </div>
@@ -246,21 +312,21 @@ function AssessmentField({ field, value, onChange }) {
   );
 }
 
-function AssessmentModal({ company, assessment, onUpdate, onClose }) {
+function AssessmentModal({ deal, assessment, onUpdate, onClose }) {
   const [activeTheme, setActiveTheme] = useState(ASSESSMENT_THEMES[0].id);
 
   const currentTheme = ASSESSMENT_THEMES.find(t => t.id === activeTheme);
   const themeData = assessment?.[activeTheme] || {};
   const overall = getOverallCompletion(assessment);
 
-  const ownerNames = company.ownerIds
+  const ownerNames = (deal.ownerIds || [])
     .map(id => TEAM_MAP[id])
     .filter(Boolean);
 
-  const stageInfo = KANBAN_STAGES.find(s => s.id === company.funnelStage);
+  const kanbanCol = KANBAN_STAGES.find(s => s.id === getKanbanColumn(deal));
 
   const handleFieldChange = (fieldId, value) => {
-    onUpdate(company.id, activeTheme, fieldId, value);
+    onUpdate(deal.id, activeTheme, fieldId, value);
   };
 
   return (
@@ -269,19 +335,20 @@ function AssessmentModal({ company, assessment, onUpdate, onClose }) {
       <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-4 p-5 border-b border-[var(--border-default)]">
-          {company.logoUrl ? (
-            <img src={company.logoUrl} alt="" className="w-10 h-10 rounded-lg object-contain bg-white" />
-          ) : (
-            <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)]">
-              {company.name?.charAt(0)}
-            </div>
-          )}
+          <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)]">
+            {(deal.name?.split(' - ')[0] || 'D').charAt(0)}
+          </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{company.name}</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{deal.name}</h2>
             <div className="flex items-center gap-3 mt-0.5">
-              {stageInfo && (
-                <span className="text-[11px] px-2 py-0.5 rounded-md font-medium text-white" style={{ backgroundColor: stageInfo.color }}>
-                  {stageInfo.label}
+              {kanbanCol && (
+                <span className="text-[11px] px-2 py-0.5 rounded-md font-medium text-white" style={{ backgroundColor: kanbanCol.color }}>
+                  {kanbanCol.label}
+                </span>
+              )}
+              {deal.satus && deal.satus !== kanbanCol?.label && (
+                <span className="text-[11px] text-[var(--text-quaternary)]">
+                  {deal.satus}
                 </span>
               )}
               {ownerNames.length > 0 && (
@@ -289,22 +356,11 @@ function AssessmentModal({ company, assessment, onUpdate, onClose }) {
                   {ownerNames.join(', ')}
                 </span>
               )}
-              {company.country && company.country !== 'Unknown' && (
-                <span className="text-[12px] text-[var(--text-quaternary)]">{company.country}</span>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Overall gauge */}
-            <div className="text-center">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-[13px] font-bold border-[3px]"
-                style={{ borderColor: completionColor(overall), color: completionColor(overall) }}
-              >
-                {overall}%
-              </div>
-              <div className="text-[9px] text-[var(--text-quaternary)] mt-0.5">Overall</div>
-            </div>
+            <GaugeRing pct={overall} size={52} strokeWidth={3.5} />
             <button
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
@@ -314,6 +370,29 @@ function AssessmentModal({ company, assessment, onUpdate, onClose }) {
               </svg>
             </button>
           </div>
+        </div>
+
+        {/* Theme gauge summary row */}
+        <div className="flex items-center justify-center gap-6 py-3 px-5 bg-[var(--bg-secondary)] border-b border-[var(--border-default)]">
+          {ASSESSMENT_THEMES.map(theme => {
+            const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
+            return (
+              <button
+                key={theme.id}
+                onClick={() => setActiveTheme(theme.id)}
+                className={`flex flex-col items-center gap-1 transition-all ${
+                  activeTheme === theme.id ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                }`}
+              >
+                <GaugeRing pct={pct} size={40} strokeWidth={2.5} />
+                <span className={`text-[9px] font-medium ${
+                  activeTheme === theme.id ? 'text-[var(--text-primary)]' : 'text-[var(--text-quaternary)]'
+                }`}>
+                  {theme.icon} {theme.label.split(' / ')[0].split(' ')[0]}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Theme tabs */}
@@ -362,43 +441,37 @@ function AssessmentModal({ company, assessment, onUpdate, onClose }) {
             </div>
           )}
 
-          {/* Company info footer */}
+          {/* Deal metadata footer */}
           <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
             <div className="grid grid-cols-3 gap-4 text-[12px]">
-              {company.industry && company.industry.length > 0 && (
+              {deal.amountInMeu != null && deal.amountInMeu > 0 && (
                 <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Industry</span>
-                  <span className="text-[var(--text-secondary)]">{company.industry.join(', ')}</span>
+                  <span className="text-[var(--text-quaternary)] block mb-1">Round size</span>
+                  <span className="text-[var(--text-secondary)] font-semibold">{deal.amountInMeu}M€</span>
                 </div>
               )}
-              {company.employeeRange && (
+              {deal.sourceType && (
                 <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Employees</span>
-                  <span className="text-[var(--text-secondary)]">{company.employeeRange}</span>
+                  <span className="text-[var(--text-quaternary)] block mb-1">Source</span>
+                  <span className="text-[var(--text-secondary)]">{deal.sourceType}</span>
                 </div>
               )}
-              {company.estimatedArr && (
+              {deal.foundingTeam && (
                 <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Est. ARR</span>
-                  <span className="text-[var(--text-secondary)]">${Number(company.estimatedArr).toLocaleString()}</span>
+                  <span className="text-[var(--text-quaternary)] block mb-1">Founding team</span>
+                  <span className="text-[var(--text-secondary)]">{deal.foundingTeam}</span>
                 </div>
               )}
-              {company.lastFundingStatus && (
+              {deal.maxStatus5 && (
                 <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Last funding</span>
-                  <span className="text-[var(--text-secondary)]">{company.lastFundingStatus}</span>
+                  <span className="text-[var(--text-quaternary)] block mb-1">Max status</span>
+                  <span className="text-[var(--text-secondary)]">{deal.maxStatus5}</span>
                 </div>
               )}
-              {company.growthScore != null && (
+              {deal.createdAt && (
                 <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Growth score</span>
-                  <span className="text-[var(--text-secondary)] font-semibold">{company.growthScore.toFixed(0)}</span>
-                </div>
-              )}
-              {company.feeling != null && (
-                <div>
-                  <span className="text-[var(--text-quaternary)] block mb-1">Feeling</span>
-                  <span className="text-[var(--text-secondary)] font-semibold">{company.feeling * 2}/10</span>
+                  <span className="text-[var(--text-quaternary)] block mb-1">Created</span>
+                  <span className="text-[var(--text-secondary)]">{deal.createdAt}</span>
                 </div>
               )}
             </div>
@@ -411,26 +484,30 @@ function AssessmentModal({ company, assessment, onUpdate, onClose }) {
 
 // ─── Main component ──────────────────────────────────────────────────
 export default function DealAnalysis({ meetingRatings, setMeetingRatings, showToast }) {
-  const { companies, loading, isLive } = useAttioCompanies();
+  const { dealFlowData, loading, isLive } = useAttioCompanies();
   const [assessments, setAssessments] = useLocalStorage('deal-assessments', {});
-  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [selectedDeal, setSelectedDeal] = useState(null);
   const [ownerFilter, setOwnerFilter] = useState('all');
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
-  // Filter to active deal stages
+  // Filter to active deals (not declined/won) and assign kanban columns
   const activeDeals = useMemo(() => {
-    const stageIds = KANBAN_STAGES.map(s => s.id);
-    return companies
-      .filter(c => stageIds.includes(c.funnelStage))
-      .filter(c => ownerFilter === 'all' || c.ownerIds.includes(ownerFilter));
-  }, [companies, ownerFilter]);
+    if (!dealFlowData?.deals) return [];
+    return dealFlowData.deals
+      .filter(d => d.isActive && d.satus !== 'Won / Portfolio' && d.satus !== 'Unqualified')
+      .filter(d => ownerFilter === 'all' || (d.ownerIds || []).includes(ownerFilter))
+      .map(d => ({
+        ...d,
+        kanbanColumn: getKanbanColumn(d),
+      }));
+  }, [dealFlowData, ownerFilter]);
 
-  // Group by stage
+  // Group by kanban stage
   const dealsByStage = useMemo(() => {
     const grouped = {};
     KANBAN_STAGES.forEach(s => { grouped[s.id] = []; });
-    activeDeals.forEach(c => {
-      if (grouped[c.funnelStage]) grouped[c.funnelStage].push(c);
+    activeDeals.forEach(d => {
+      if (grouped[d.kanbanColumn]) grouped[d.kanbanColumn].push(d);
     });
     // Sort within each column by completion desc
     Object.keys(grouped).forEach(stageId => {
@@ -442,12 +519,12 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
   }, [activeDeals, assessments]);
 
   // Update a single field in an assessment
-  const handleAssessmentUpdate = useCallback((companyId, themeId, fieldId, value) => {
+  const handleAssessmentUpdate = useCallback((dealId, themeId, fieldId, value) => {
     setAssessments(prev => {
-      const current = prev[companyId] || emptyAssessment();
+      const current = prev[dealId] || emptyAssessment();
       return {
         ...prev,
-        [companyId]: {
+        [dealId]: {
           ...current,
           [themeId]: {
             ...current[themeId],
@@ -468,12 +545,12 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
     setTimeout(() => showToast('Meetings synced!'), 1000);
   };
 
-  if (loading && companies.length === 0) {
+  if (loading && !dealFlowData) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-[var(--rrw-red)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-[var(--text-tertiary)] text-sm">Loading company data from Attio...</p>
+          <p className="text-[var(--text-tertiary)] text-sm">Loading deal flow data from Attio...</p>
         </div>
       </div>
     );
@@ -491,9 +568,9 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-4">
-        {/* ─── LEFT: Kanban Board ─────────────────────────── */}
-        <div className="col-span-3">
+      <div className="grid grid-cols-5 gap-4">
+        {/* ─── LEFT: Kanban Board (4 cols) ─────────────────── */}
+        <div className="col-span-4">
           {/* Filter bar */}
           <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-3 mb-4">
             <div className="flex items-center gap-4">
@@ -510,7 +587,7 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
                   ))}
                 </select>
               </div>
-              <div className="ml-auto flex items-center gap-4">
+              <div className="ml-auto flex items-center gap-6">
                 {KANBAN_STAGES.map(stage => {
                   const count = dealsByStage[stage.id]?.length || 0;
                   return (
@@ -530,16 +607,45 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
               <KanbanColumn
                 key={stage.id}
                 stage={stage}
-                companies={dealsByStage[stage.id] || []}
+                deals={dealsByStage[stage.id] || []}
                 assessments={assessments}
-                onCardClick={setSelectedCompany}
+                onCardClick={setSelectedDeal}
               />
             ))}
           </div>
         </div>
 
-        {/* ─── RIGHT: Calls + Ratings sidebar ─────────────── */}
+        {/* ─── RIGHT: Calls + Stats sidebar ─────────────────── */}
         <div className="col-span-1 space-y-4">
+          {/* Assessment Progress */}
+          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
+            <h3 className="font-semibold text-[13px] text-[var(--text-primary)] mb-3">Assessment Progress</h3>
+            <div className="space-y-2">
+              {KANBAN_STAGES.map(stage => {
+                const deals = dealsByStage[stage.id] || [];
+                const avgCompletion = deals.length > 0
+                  ? Math.round(deals.reduce((sum, d) => sum + getOverallCompletion(assessments[d.id]), 0) / deals.length)
+                  : 0;
+                return (
+                  <div key={stage.id}>
+                    <div className="flex items-center justify-between text-[11px] mb-1">
+                      <span className="text-[var(--text-tertiary)]">{stage.label}</span>
+                      <span className="font-semibold" style={{ color: completionColor(avgCompletion) }}>
+                        {avgCompletion}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${avgCompletion}%`, backgroundColor: completionColor(avgCompletion) }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Recent Calls */}
           <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
@@ -602,45 +708,16 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
               })}
             </div>
           </div>
-
-          {/* Quick stats */}
-          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
-            <h3 className="font-semibold text-[13px] text-[var(--text-primary)] mb-3">Assessment Progress</h3>
-            <div className="space-y-2">
-              {KANBAN_STAGES.map(stage => {
-                const deals = dealsByStage[stage.id] || [];
-                const avgCompletion = deals.length > 0
-                  ? Math.round(deals.reduce((sum, d) => sum + getOverallCompletion(assessments[d.id]), 0) / deals.length)
-                  : 0;
-                return (
-                  <div key={stage.id}>
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-[var(--text-tertiary)]">{stage.label}</span>
-                      <span className="font-semibold" style={{ color: completionColor(avgCompletion) }}>
-                        {avgCompletion}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-[var(--border-subtle)] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${avgCompletion}%`, backgroundColor: completionColor(avgCompletion) }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
       {/* ─── Assessment Modal ──────────────────────────── */}
-      {selectedCompany && (
+      {selectedDeal && (
         <AssessmentModal
-          company={selectedCompany}
-          assessment={assessments[selectedCompany.id] || emptyAssessment()}
+          deal={selectedDeal}
+          assessment={assessments[selectedDeal.id] || emptyAssessment()}
           onUpdate={handleAssessmentUpdate}
-          onClose={() => setSelectedCompany(null)}
+          onClose={() => setSelectedDeal(null)}
         />
       )}
 
