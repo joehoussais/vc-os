@@ -123,14 +123,19 @@ export async function fetchAllCompanies() {
   return allRecords;
 }
 
-// Fetch all companies with an owner set (sourcing universe ~2000+)
+// Fetch all companies with an owner set, excluding "Old/ Out of scope" and "No US path for now"
 export async function fetchOwnedCompanies() {
   let allRecords = [];
   let offset = null;
 
   do {
     const payload = {
-      filter: { "owner": { "$not_empty": true } },
+      filter: {
+        "$and": [
+          { "owner": { "$not_empty": true } },
+          { "status_4": { "$not_in": ["Old/ Out of scope", "No US path for now"] } },
+        ],
+      },
       limit: 100,
     };
     if (offset) payload.offset = offset;
@@ -141,6 +146,37 @@ export async function fetchOwnedCompanies() {
   } while (offset);
 
   return allRecords;
+}
+
+// Extract only needed fields from a raw company record for funnel processing
+export function extractCompanyFields(record) {
+  const id = record?.id?.record_id;
+  if (!id) return null;
+  const v = record.values || {};
+
+  const name = v.name?.[0]?.value || 'Unknown';
+  const status4 = v.status_4?.[0]?.status?.title || v.status_4?.[0]?.option?.title || null;
+  const ownerIds = (v.owner || [])
+    .map(o => o.referenced_actor_id || o.workspace_membership_id)
+    .filter(Boolean);
+  const firstEmail = v.first_email_interaction?.[0]?.value || null;
+  const firstCalendar = v.first_calendar_interaction?.[0]?.value || null;
+  const domain = v.domains?.[0]?.domain || null;
+  const logoUrl = v.logo_url?.[0]?.value || null;
+  const location = v.primary_location?.[0]?.country_code
+    || v.cross_checked_hq_country?.[0]?.value || null;
+
+  return {
+    id,
+    name,
+    status4,
+    ownerIds,
+    firstEmail,
+    firstCalendar,
+    domain,
+    logoUrl,
+    location,
+  };
 }
 
 // Fetch all LP records with pagination
@@ -156,6 +192,47 @@ export async function fetchAllLPs() {
     allRecords = allRecords.concat(data.data || []);
     offset = data.next_page_offset || null;
   } while (offset);
+
+  return allRecords;
+}
+
+// Fetch portfolio companies (status_4 = "Portfolio") plus extra named companies
+export async function fetchPortfolioCompanies(extraNames = []) {
+  // Fetch all with status_4 = Portfolio
+  let allRecords = [];
+  let offset = null;
+
+  do {
+    const payload = {
+      filter: { "status_4": { "$eq": "Portfolio" } },
+      limit: 100,
+    };
+    if (offset) payload.offset = offset;
+
+    const data = await attioQuery('/objects/companies/records/query', payload);
+    allRecords = allRecords.concat(data.data || []);
+    offset = data.next_page_offset || null;
+  } while (offset);
+
+  // Fetch extra companies by name (ones not tagged "Portfolio" in Attio)
+  for (const name of extraNames) {
+    try {
+      const data = await attioQuery('/objects/companies/records/query', {
+        filter: { "name": { "$contains": name } },
+        limit: 5,
+      });
+      const results = data.data || [];
+      const match = results.find(r => {
+        const n = r.values?.name?.[0]?.value?.toLowerCase() || '';
+        return n === name.toLowerCase() || n.startsWith(name.toLowerCase());
+      });
+      if (match && !allRecords.find(r => r.id?.record_id === match.id?.record_id)) {
+        allRecords.push(match);
+      }
+    } catch (e) {
+      console.warn(`Could not fetch extra portfolio company: ${name}`, e);
+    }
+  }
 
   return allRecords;
 }
@@ -486,7 +563,7 @@ export function getLocationCountryCode(record, slug) {
 }
 
 // Deal funnel session cache
-const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache-v2'; // v2: names resolved
+const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache-v3'; // v3: company-based universe
 
 export function getCachedDealFunnel() {
   try {
