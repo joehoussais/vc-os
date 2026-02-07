@@ -185,6 +185,55 @@ export async function fetchListEntries() {
   return allEntries;
 }
 
+// Fetch all entries from the Deal Flow list (deal_flow_4)
+// Uses same pagination pattern as fetchListEntries
+export async function fetchDealFlowEntries() {
+  const BATCH = 500;
+  let allEntries = [];
+  let offset = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const payload = { limit: BATCH };
+    if (offset > 0) payload.offset = offset;
+
+    const data = await attioQuery('/lists/deal_flow_4/entries/query', payload);
+    const batch = data.data || [];
+    allEntries = allEntries.concat(batch);
+
+    if (batch.length < BATCH) break;
+    offset += BATCH;
+  }
+
+  return allEntries;
+}
+
+// Fetch count of entries in the Proactive Sourcing list (old_2_6)
+// We only need the total count for the "Qualified" stage
+export async function fetchProactiveSourcingCount() {
+  const data = await attioQuery('/lists/old_2_6/entries/query', { limit: 1 });
+  // The first batch tells us if there are entries; to get total count we paginate
+  // But for efficiency, we'll do a fast count by fetching with limit=500 batches
+  const BATCH = 500;
+  let total = 0;
+  let offset = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const payload = { limit: BATCH };
+    if (offset > 0) payload.offset = offset;
+
+    const result = await attioQuery('/lists/old_2_6/entries/query', payload);
+    const batch = result.data || [];
+    total += batch.length;
+
+    if (batch.length < BATCH) break;
+    offset += BATCH;
+  }
+
+  return total;
+}
+
 // Update a single field on a coverage list entry (for toggling received/in_scope)
 export async function updateListEntry(entryId, fieldSlug, value) {
   return attioQuery(`/lists/deal_coverage_6/entries/${entryId}`, {
@@ -294,6 +343,35 @@ export function getLocationCountryCode(record, slug) {
   const attr = record?.values?.[slug];
   if (!attr || !attr.length) return null;
   return attr[0].country_code || null;
+}
+
+// Deal funnel session cache
+const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache';
+
+export function getCachedDealFunnel() {
+  try {
+    const raw = sessionStorage.getItem(DEAL_FUNNEL_CACHE_KEY);
+    if (!raw) return null;
+    const { data, timestamp } = JSON.parse(raw);
+    if (Date.now() - timestamp > CACHE_TTL) {
+      sessionStorage.removeItem(DEAL_FUNNEL_CACHE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedDealFunnel(data) {
+  try {
+    sessionStorage.setItem(DEAL_FUNNEL_CACHE_KEY, JSON.stringify({
+      data,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // sessionStorage full or unavailable — ignore
+  }
 }
 
 // Helper: extract all values for a multi-value attribute (e.g. categories, tags)

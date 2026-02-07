@@ -31,6 +31,8 @@ export default async (req) => {
       '/objects/companies/records/query',
       '/objects/lp/records/query',
       '/lists/deal_coverage_6/entries/query',
+      '/lists/deal_flow_4/entries/query',
+      '/lists/old_2_6/entries/query',
       '/objects/people/records/query',
     ];
 
