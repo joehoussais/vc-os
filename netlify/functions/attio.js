@@ -34,20 +34,7 @@ export default async (req) => {
   // Verify JWT from Netlify Identity
   const authHeader = req.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return new Response(JSON.stringify({ error: 'Authentication required' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  const user = await verifyJWT(token);
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Invalid or unauthorized token' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  const verifiedUser = token ? await verifyJWT(token) : null;
 
   try {
     const body = await req.json();
@@ -76,6 +63,13 @@ export default async (req) => {
         });
       }
     } else if (httpMethod === 'PUT' || httpMethod === 'PATCH') {
+      // Writes require authenticated user
+      if (!verifiedUser) {
+        return new Response(JSON.stringify({ error: 'Authentication required for writes' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       if (!writePattern.test(endpoint)) {
         return new Response(JSON.stringify({ error: 'Write endpoint not allowed' }), {
           status: 403,
