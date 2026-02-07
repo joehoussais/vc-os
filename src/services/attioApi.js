@@ -123,27 +123,46 @@ export async function fetchAllCompanies() {
   return allRecords;
 }
 
-// Fetch all companies with an owner set, excluding "Old/ Out of scope" and "No US path for now"
+// Fetch all companies with an owner set (~3,000+)
+// Uses Attio's actor-reference filter: referenced_actor_type.$eq
+// Exclusions (Old/ Out of scope, No US path) are done client-side
+// because Attio doesn't support $not_in on status fields
 export async function fetchOwnedCompanies() {
-  let allRecords = [];
-  let offset = null;
+  const BATCH = 500;
 
-  do {
-    const payload = {
-      filter: {
-        "$and": [
-          { "owner": { "$not_empty": true } },
-          { "status_4": { "$not_in": ["Old/ Out of scope", "No US path for now"] } },
-        ],
-      },
-      limit: 100,
-    };
-    if (offset) payload.offset = offset;
+  // First page — sequential to discover if there are more
+  const first = await attioQuery('/objects/companies/records/query', {
+    filter: { "owner": { "referenced_actor_type": { "$eq": "workspace-member" } } },
+    limit: BATCH,
+  });
+  const firstBatch = first.data || [];
+  let allRecords = [...firstBatch];
 
-    const data = await attioQuery('/objects/companies/records/query', payload);
-    allRecords = allRecords.concat(data.data || []);
-    offset = data.next_page_offset || null;
-  } while (offset);
+  if (firstBatch.length < BATCH) return allRecords;
+
+  // Fire remaining pages in parallel (up to ~4000 expected)
+  const offsets = [];
+  for (let off = BATCH; off < 8000; off += BATCH) {
+    offsets.push(off);
+  }
+
+  const pages = await Promise.all(
+    offsets.map(offset =>
+      attioQuery('/objects/companies/records/query', {
+        filter: { "owner": { "referenced_actor_type": { "$eq": "workspace-member" } } },
+        limit: BATCH,
+        offset,
+      })
+        .then(data => data.data || [])
+        .catch(() => [])
+    )
+  );
+
+  for (const batch of pages) {
+    if (batch.length === 0) break;
+    allRecords = allRecords.concat(batch);
+    if (batch.length < BATCH) break;
+  }
 
   return allRecords;
 }

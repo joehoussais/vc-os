@@ -263,7 +263,7 @@ export default function DealFunnel({ setActiveTab }) {
         <div className="flex items-center justify-end mb-2 gap-2">
           <span className="text-[11px] text-[var(--text-quaternary)]">
             {funnel.counts.universe.toLocaleString()} qualified companies
-            {' \u00B7 '}{funnel.totalDeals} in dealflow ({funnel.activeDeals} active)
+            {' · '}{funnel.totalDeals} in dealflow ({funnel.activeDeals} active)
           </span>
           {loading && <span className="text-[11px] text-[var(--rrw-red)]">Syncing...</span>}
         </div>
@@ -302,7 +302,7 @@ export default function DealFunnel({ setActiveTab }) {
             ]}
           />
           <div className="ml-auto text-right">
-            <span className="text-xs text-[var(--text-tertiary)] block">Dealflow \u2192 Portfolio</span>
+            <span className="text-xs text-[var(--text-tertiary)] block">Dealflow → Portfolio</span>
             <span className="text-2xl font-bold text-[var(--rrw-red)]">{funnel.overallConversion}%</span>
           </div>
         </div>
@@ -386,7 +386,7 @@ export default function DealFunnel({ setActiveTab }) {
                           <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
                           <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
                             {stage.description}
-                            {stage.currentCount > 0 && ` \u00B7 ${stage.currentCount} currently here`}
+                            {stage.currentCount > 0 && ` · ${stage.currentCount} currently here`}
                           </div>
                           {setActiveTab && (
                             <button
@@ -394,7 +394,7 @@ export default function DealFunnel({ setActiveTab }) {
                               className="text-[10px] mt-1 hover:underline"
                               style={{ color: 'var(--rrw-red)' }}
                             >
-                              View in Deal Analysis \u2192
+                              View in Deal Analysis →
                             </button>
                           )}
                         </div>
@@ -450,9 +450,9 @@ export default function DealFunnel({ setActiveTab }) {
                       <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
                         {stage.description}
                         {!TOP_FUNNEL_STAGES.has(stage.id) && stage.currentCount > 0 &&
-                          ` \u00B7 ${stage.currentCount} currently here`
+                          ` · ${stage.currentCount} currently here`
                         }
-                        {stage.totalAmount > 0 && ` \u00B7 ${stage.totalAmount.toFixed(0)}M\u20AC raised`}
+                        {stage.totalAmount > 0 && ` · ${stage.totalAmount.toFixed(0)}M€ raised`}
                       </div>
                       {DEAL_ANALYSIS_STAGES.has(stage.id) && setActiveTab && (
                         <button
@@ -460,7 +460,7 @@ export default function DealFunnel({ setActiveTab }) {
                           className="text-[10px] mt-1 hover:underline"
                           style={{ color: 'var(--rrw-red)' }}
                         >
-                          View in Deal Analysis \u2192
+                          View in Deal Analysis →
                         </button>
                       )}
                     </div>
@@ -483,7 +483,7 @@ export default function DealFunnel({ setActiveTab }) {
               const rateColor = rate >= 40 ? 'text-emerald-500' : rate >= 20 ? 'text-amber-500' : 'text-red-500';
               return (
                 <div key={stage.id} className="flex justify-between py-2.5 border-b border-[var(--border-subtle)] last:border-0">
-                  <span className="text-[12px] text-[var(--text-tertiary)]">{prev.name} \u2192 {stage.name}</span>
+                  <span className="text-[12px] text-[var(--text-tertiary)]">{prev.name} → {stage.name}</span>
                   <span className={`font-semibold text-[13px] ${rateColor}`}>{rate}%</span>
                 </div>
               );
@@ -502,19 +502,19 @@ export default function DealFunnel({ setActiveTab }) {
                   </div>
                   <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
                     <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.emailToCallCount}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)]">\u2192 Calls</div>
+                    <div className="text-[9px] text-[var(--text-quaternary)]">→ Calls</div>
                   </div>
                   <div className="bg-[var(--bg-tertiary)] rounded-lg p-2.5 text-center">
                     <div className="text-lg font-bold text-[var(--text-primary)]">{emailMetrics.emailToDealflowCount}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)]">\u2192 Dealflow</div>
+                    <div className="text-[9px] text-[var(--text-quaternary)]">→ Dealflow</div>
                   </div>
                 </div>
                 <div className="flex justify-between text-[12px]">
-                  <span className="text-[var(--text-tertiary)]">Email \u2192 Call</span>
+                  <span className="text-[var(--text-tertiary)]">Email → Call</span>
                   <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{emailMetrics.emailToCallRate}%</span>
                 </div>
                 <div className="flex justify-between text-[12px]">
-                  <span className="text-[var(--text-tertiary)]">Email \u2192 Dealflow</span>
+                  <span className="text-[var(--text-tertiary)]">Email → Dealflow</span>
                   <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{emailMetrics.emailToDealflowRate}%</span>
                 </div>
 
@@ -526,9 +526,9 @@ export default function DealFunnel({ setActiveTab }) {
                         <span className="text-[var(--text-tertiary)] font-medium">{year}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-[var(--text-quaternary)]">{data.emails} emails</span>
-                          <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                          <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                           <span className="text-[var(--text-quaternary)]">{data.calls} calls</span>
-                          <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                          <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                           <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{data.dealflow} deals</span>
                         </div>
                       </div>
@@ -577,9 +577,9 @@ export default function DealFunnel({ setActiveTab }) {
                     <span className="text-[var(--text-secondary)] font-medium">{name}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-[var(--text-quaternary)]">{data.total}</span>
-                      <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                      <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                       <span className="text-[var(--text-quaternary)]">{data.met}</span>
-                      <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                      <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                       <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{data.committee}</span>
                     </div>
                   </div>
@@ -601,9 +601,9 @@ export default function DealFunnel({ setActiveTab }) {
                     <span className="text-[var(--text-secondary)] font-medium">{name}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-[var(--text-quaternary)]">{data.universe}</span>
-                      <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                      <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                       <span className="text-[var(--text-quaternary)]">{data.outreach}</span>
-                      <span className="text-[10px] text-[var(--text-quaternary)]">\u2192</span>
+                      <span className="text-[10px] text-[var(--text-quaternary)]">→</span>
                       <span className="font-semibold" style={{ color: 'var(--rrw-red)' }}>{data.dealflow}</span>
                     </div>
                   </div>
@@ -666,7 +666,7 @@ function StageDetailPanel({ stage, stageId, setActiveTab, onClose }) {
           <h3 className="font-semibold text-[var(--text-primary)]">{stage.name}</h3>
           <p className="text-xs text-[var(--text-tertiary)]">
             {stage.items?.length || 0} {isTopFunnel ? 'companies' : 'deals'} at this stage
-            {!isTopFunnel && stage.currentCount > 0 && ` \u00B7 ${stage.currentCount} currently here`}
+            {!isTopFunnel && stage.currentCount > 0 && ` · ${stage.currentCount} currently here`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -676,7 +676,7 @@ function StageDetailPanel({ stage, stageId, setActiveTab, onClose }) {
               className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--rrw-red)] hover:bg-[var(--rrw-red-subtle)] transition-colors"
               style={{ color: 'var(--rrw-red)' }}
             >
-              Open in Deal Analysis \u2192
+              Open in Deal Analysis →
             </button>
           )}
           <button
@@ -740,7 +740,7 @@ function CompanyTable({ items }) {
           ))}
         {(items || []).length > 100 && (
           <div className="text-center py-3 text-[11px] text-[var(--text-quaternary)]">
-            Showing first 100 \u00B7 {items.length - 100} more
+            Showing first 100 · {items.length - 100} more
           </div>
         )}
       </div>
@@ -806,7 +806,7 @@ function DealTable({ items }) {
           ))}
         {(items || []).length > 50 && (
           <div className="text-center py-3 text-[11px] text-[var(--text-quaternary)]">
-            Showing top 50 by amount \u00B7 {items.length - 50} more
+            Showing top 50 by amount · {items.length - 50} more
           </div>
         )}
       </div>
