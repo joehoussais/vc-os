@@ -11,8 +11,6 @@ import {
 } from '@dnd-kit/core';
 import { useAttioCompanies } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
-import { granolaMeetings } from '../data/mockData';
-import Modal from '../components/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 // ─── Theme icons (inline SVGs, no emojis) ────────────────────────────
@@ -331,6 +329,52 @@ const KANBAN_STAGES = [
 ];
 
 const ACTIVE_SATUS = new Set(['Met', 'Committee']);
+
+// ─── Placeholder calls per company (matched by company name in deal.name) ───
+// Will be replaced by real Granola data later
+const PLACEHOLDER_CALLS = {
+  'Upciti': [
+    { id: 'u1', title: 'First founder call — Christophe', date: 'Jan 15, 2026', attendees: ['Olivier', 'Christophe'], type: 'Founder' },
+    { id: 'u2', title: 'Product deep-dive w/ CTO', date: 'Jan 22, 2026', attendees: ['Joseph', 'Marc (CTO)'], type: 'Product' },
+    { id: 'u3', title: 'Market reference — city of Lyon', date: 'Jan 28, 2026', attendees: ['Olivier', 'Deputy Mayor'], type: 'Reference' },
+    { id: 'u4', title: 'Follow-up — unit economics review', date: 'Feb 04, 2026', attendees: ['Olivier', 'Christophe'], type: 'Financials' },
+  ],
+  'Sunrise Robotics': [
+    { id: 'sr1', title: 'Intro call — CEO pitch', date: 'Jan 20, 2026', attendees: ['Joseph', 'CEO'], type: 'Founder' },
+    { id: 'sr2', title: 'Technical DD — robotics stack', date: 'Feb 01, 2026', attendees: ['Joseph', 'CTO'], type: 'Product' },
+  ],
+  'Quiet': [
+    { id: 'q1', title: 'First call — Anouar', date: 'Jan 18, 2026', attendees: ['Joseph', 'Anouar'], type: 'Founder' },
+    { id: 'q2', title: 'Customer reference — enterprise client', date: 'Jan 30, 2026', attendees: ['Joseph', 'VP Eng (client)'], type: 'Reference' },
+    { id: 'q3', title: 'Competitive landscape review', date: 'Feb 03, 2026', attendees: ['Anouar', 'Joseph'], type: 'Market' },
+  ],
+  'Cello': [
+    { id: 'c1', title: 'Intro call — Stefan (CEO)', date: 'Jan 25, 2026', attendees: ['Joseph', 'Stefan'], type: 'Founder' },
+    { id: 'c2', title: 'GTM deep-dive — Series A', date: 'Feb 03, 2026', attendees: ['Stefan', 'Joseph'], type: 'GTM' },
+  ],
+  'Satlyt': [
+    { id: 's1', title: 'First meeting — Max Corbani', date: 'Jan 30, 2026', attendees: ['Max', 'Rama'], type: 'Founder' },
+  ],
+  'Staer': [
+    { id: 'st1', title: 'Intro — Jan Erik Solem', date: 'Jan 14, 2026', attendees: ['Joseph', 'Jan Erik'], type: 'Founder' },
+    { id: 'st2', title: 'Technical deep-dive — computer vision', date: 'Jan 22, 2026', attendees: ['Joseph', 'CTO'], type: 'Product' },
+    { id: 'st3', title: 'Customer call — logistics partner', date: 'Jan 30, 2026', attendees: ['Jan Erik', 'Abel'], type: 'Reference' },
+  ],
+  'RMG': [
+    { id: 'r1', title: 'Intro call — Rick Gittleman', date: 'Jan 28, 2026', attendees: ['Olivier', 'Rick'], type: 'Founder' },
+    { id: 'r2', title: 'Market sizing — minerals supply chain', date: 'Feb 03, 2026', attendees: ['Rick', 'Olivier'], type: 'Market' },
+  ],
+};
+
+// Match a deal name to placeholder calls
+function getDealCalls(dealName) {
+  if (!dealName) return [];
+  const name = dealName.split(' - ')[0].trim().toLowerCase();
+  for (const [key, calls] of Object.entries(PLACEHOLDER_CALLS)) {
+    if (name.includes(key.toLowerCase())) return calls;
+  }
+  return [];
+}
 
 // Hardcoded initial overrides
 const INITIAL_OVERRIDES = {
@@ -688,7 +732,22 @@ function ScoreBadge({ score, label }) {
   );
 }
 
-function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides }) {
+function CallTypeTag({ type }) {
+  const colors = {
+    Founder: { bg: 'rgba(139, 92, 246, 0.1)', fg: '#8B5CF6' },
+    Product: { bg: 'rgba(59, 130, 246, 0.1)', fg: '#3B82F6' },
+    Reference: { bg: 'rgba(16, 185, 129, 0.1)', fg: '#10B981' },
+    Market: { bg: 'rgba(245, 158, 11, 0.1)', fg: '#F59E0B' },
+    Financials: { bg: 'rgba(239, 68, 68, 0.1)', fg: '#EF4444' },
+    GTM: { bg: 'rgba(236, 72, 153, 0.1)', fg: '#EC4899' },
+  };
+  const c = colors[type] || { bg: 'var(--bg-tertiary)', fg: 'var(--text-tertiary)' };
+  return (
+    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide" style={{ backgroundColor: c.bg, color: c.fg }}>{type}</span>
+  );
+}
+
+function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides, meetingRatings, onRateMeeting }) {
   const [activeTheme, setActiveTheme] = useState(ASSESSMENT_THEMES[0].id);
   const currentTheme = ASSESSMENT_THEMES.find(t => t.id === activeTheme);
   const themeData = assessment?.[activeTheme] || {};
@@ -696,6 +755,7 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
   const overallScore = getOverallScore(assessment);
   const ownerNames = (deal.ownerIds || []).map(id => TEAM_MAP[id]).filter(Boolean);
   const kanbanCol = KANBAN_STAGES.find(s => s.id === getKanbanColumn(deal, columnOverrides));
+  const dealCalls = getDealCalls(deal.name);
 
   const handleFieldChange = (fieldId, value) => onUpdate(deal.id, activeTheme, fieldId, value);
 
@@ -706,13 +766,17 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
     return sum + getRealFields(t).filter(f => f.type === 'check' && d[f.id] === true).length;
   }, 0);
 
+  // Average call rating for this deal
+  const ratedCalls = dealCalls.filter(c => meetingRatings?.[c.id] != null);
+  const avgCallRating = ratedCalls.length > 0 ? Math.round((ratedCalls.reduce((s, c) => s + meetingRatings[c.id], 0) / ratedCalls.length) * 10) / 10 : null;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop — only closes on direct click, not drag/accidental */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} />
 
-      {/* Modal container — fixed height to prevent resizing */}
-      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl flex overflow-hidden" style={{ width: 'min(1100px, calc(100vw - 48px))', height: 'min(85vh, 820px)' }}>
+      {/* Modal container — 3-panel layout */}
+      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl flex overflow-hidden" style={{ width: 'min(1320px, calc(100vw - 48px))', height: 'min(85vh, 820px)' }}>
 
         {/* ─── Left sidebar: nav + scores ─── */}
         <div className="w-[220px] flex-shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border-default)] flex flex-col">
@@ -795,7 +859,7 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
           </div>
         </div>
 
-        {/* ─── Right: content area ─── */}
+        {/* ─── Center: scoring content area ─── */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Content header with theme name + close button */}
           <div className="flex items-center justify-between px-6 py-3.5 border-b border-[var(--border-default)] flex-shrink-0">
@@ -827,6 +891,86 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
             )}
           </div>
         </div>
+
+        {/* ─── Right panel: calls timeline ─── */}
+        <div className="w-[260px] flex-shrink-0 bg-[var(--bg-secondary)] border-l border-[var(--border-default)] flex flex-col">
+          {/* Calls header */}
+          <div className="px-4 py-3.5 border-b border-[var(--border-default)]">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-quaternary)]">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                </svg>
+                <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">Calls</h3>
+              </div>
+              <span className="text-[10px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded-md">{dealCalls.length}</span>
+            </div>
+            {avgCallRating != null && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="text-[10px] text-[var(--text-quaternary)]">Avg rating</span>
+                <span className="text-[12px] font-bold" style={{ color: avgCallRating >= 7 ? '#10B981' : avgCallRating >= 4 ? '#F59E0B' : '#EF4444' }}>{avgCallRating}/10</span>
+              </div>
+            )}
+          </div>
+
+          {/* Calls list */}
+          <div className="flex-1 overflow-y-auto">
+            {dealCalls.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--border-default)] mx-auto mb-2">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                </svg>
+                <p className="text-[11px] text-[var(--text-quaternary)]">No calls recorded yet</p>
+                <p className="text-[10px] text-[var(--text-quaternary)] mt-1">Calls will appear here once synced</p>
+              </div>
+            ) : (
+              <div className="px-3 py-2 space-y-0.5">
+                {dealCalls.map((call, idx) => {
+                  const rating = meetingRatings?.[call.id];
+                  return (
+                    <div key={call.id} className="relative pl-5">
+                      {/* Timeline line */}
+                      {idx < dealCalls.length - 1 && (
+                        <div className="absolute left-[7px] top-[18px] bottom-0 w-px bg-[var(--border-subtle)]" />
+                      )}
+                      {/* Timeline dot */}
+                      <div className="absolute left-0 top-[6px] w-[15px] h-[15px] rounded-full border-2 flex items-center justify-center" style={{ borderColor: rating != null ? (rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444') : 'var(--border-default)', backgroundColor: rating != null ? (rating >= 7 ? '#10B98115' : rating >= 4 ? '#F59E0B15' : '#EF444415') : 'var(--bg-primary)' }}>
+                        {rating != null && <div className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444' }} />}
+                      </div>
+
+                      <div className="pb-3 pt-0.5">
+                        <div className="flex items-start justify-between gap-1 mb-0.5">
+                          <span className="text-[11px] font-medium text-[var(--text-primary)] leading-tight">{call.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] text-[var(--text-quaternary)]">{call.date}</span>
+                          <CallTypeTag type={call.type} />
+                        </div>
+                        <div className="text-[10px] text-[var(--text-quaternary)] mb-1.5">{call.attendees.join(', ')}</div>
+                        {/* Rating buttons */}
+                        <div className="flex gap-0.5">
+                          {ratingOptions.map(n => (
+                            <button
+                              key={n}
+                              onClick={() => onRateMeeting(call.id, n)}
+                              className={`w-[19px] h-[19px] text-[9px] rounded flex items-center justify-center transition-all ${
+                                rating === n
+                                  ? 'bg-[var(--rrw-red)] text-white font-bold'
+                                  : 'bg-[var(--bg-primary)] text-[var(--text-quaternary)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)]'
+                              }`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -839,7 +983,6 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
   const [columnOverrides, setColumnOverrides] = useLocalStorage('deal-column-overrides', INITIAL_OVERRIDES);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [ownerFilter, setOwnerFilter] = useState('all');
-  const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [activeDragId, setActiveDragId] = useState(null);
 
   // Merge initial overrides with any persisted ones
@@ -952,122 +1095,63 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
         </div>
       )}
 
-      <div className="grid grid-cols-5 gap-4">
-        {/* ─── LEFT: Kanban Board (4 cols) ─────────────────── */}
-        <div className="col-span-4">
-          {/* Filter bar */}
-          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-4">
-              <div>
-                <label className="text-[11px] font-medium text-[var(--text-tertiary)] block mb-1">Owner</label>
-                <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="px-3 py-1.5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--rrw-red)]">
-                  <option value="all">Everyone</option>
-                  {TEAM_MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </div>
-              <div className="ml-auto flex items-center gap-6">
-                {KANBAN_STAGES.map(stage => (
-                  <div key={stage.id} className="text-center">
-                    <div className="text-lg font-bold text-[var(--text-primary)]">{dealIdsByStage[stage.id]?.length || 0}</div>
-                    <div className="text-[10px] text-[var(--text-quaternary)]">{stage.label}</div>
-                  </div>
-                ))}
-              </div>
+      <div>
+        {/* Filter bar */}
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="text-[11px] font-medium text-[var(--text-tertiary)] block mb-1">Owner</label>
+              <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="px-3 py-1.5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--rrw-red)]">
+                <option value="all">Everyone</option>
+                {TEAM_MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
             </div>
-          </div>
-
-          {/* Kanban columns with DnD */}
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
-          >
-            <div className="flex gap-4">
+            <div className="ml-auto flex items-center gap-6">
               {KANBAN_STAGES.map(stage => (
-                <DroppableColumn
-                  key={stage.id}
-                  stage={stage}
-                  dealIds={dealIdsByStage[stage.id] || []}
-                  allDeals={activeDeals}
-                  assessments={assessments}
-                  onCardClick={setSelectedDeal}
-                />
+                <div key={stage.id} className="text-center">
+                  <div className="text-lg font-bold text-[var(--text-primary)]">{dealIdsByStage[stage.id]?.length || 0}</div>
+                  <div className="text-[10px] text-[var(--text-quaternary)]">{stage.label}</div>
+                </div>
               ))}
             </div>
-
-            {/* Drag overlay — floating card while dragging */}
-            <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
-              {activeDragDeal && (
-                <div className="w-[280px]">
-                  <KanbanCardContent
-                    deal={activeDragDeal}
-                    assessment={assessments[activeDragDeal.id]}
-                    onClick={() => {}}
-                    isDragging={true}
-                  />
-                </div>
-              )}
-            </DragOverlay>
-          </DndContext>
-        </div>
-
-        {/* ─── RIGHT: Stats + Calls sidebar ─────────────────── */}
-        <div className="col-span-1 space-y-4">
-          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
-            <h3 className="font-semibold text-[13px] text-[var(--text-primary)] mb-3">Assessment Progress</h3>
-            <div className="space-y-2">
-              {KANBAN_STAGES.map(stage => {
-                const ids = dealIdsByStage[stage.id] || [];
-                const avgCompletion = ids.length > 0
-                  ? Math.round(ids.reduce((sum, id) => sum + getOverallCompletion(assessments[id]), 0) / ids.length)
-                  : 0;
-                return (
-                  <div key={stage.id}>
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-[var(--text-tertiary)]">{stage.label}</span>
-                      <span className="font-semibold" style={{ color: completionColor(avgCompletion) }}>{avgCompletion}%</span>
-                    </div>
-                    <div className="h-1.5 bg-[var(--border-subtle)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${avgCompletion}%`, backgroundColor: completionColor(avgCompletion) }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-[13px] text-[var(--text-primary)]">Recent Calls</h3>
-              <button onClick={() => { showToast('Syncing with Granola...'); setTimeout(() => showToast('Meetings synced!'), 1000); }} className="h-7 px-2 flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] rounded-md transition-all">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                Sync
-              </button>
-            </div>
-            <div className="space-y-1">
-              {granolaMeetings.map(meeting => {
-                const savedRating = meetingRatings[meeting.id] || meeting.rating;
-                return (
-                  <div key={meeting.id} className="p-2 rounded-md hover:bg-[var(--bg-hover)] cursor-pointer transition-colors" onClick={() => setSelectedMeeting(meeting)}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[12px] font-medium text-[var(--text-primary)] truncate flex-1 mr-2">{meeting.title}</span>
-                      {savedRating && <span className="text-[11px] font-bold" style={{ color: savedRating >= 7 ? '#10B981' : savedRating >= 4 ? '#F59E0B' : '#EF4444' }}>{savedRating}/10</span>}
-                    </div>
-                    <div className="text-[10px] text-[var(--text-quaternary)]">{meeting.attendees.slice(0, 2).join(', ')} · {meeting.date}</div>
-                    {meeting.company && <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-medium">{meeting.company}</span>}
-                    <div className="flex gap-0.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      {ratingOptions.map(n => (
-                        <button key={n} onClick={() => rateMeeting(meeting.id, n)} className={`w-5 h-5 text-[9px] rounded flex items-center justify-center transition-all ${savedRating === n ? 'bg-[var(--rrw-red)] text-white font-bold' : 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] hover:bg-[var(--bg-hover)]'}`}>{n}</button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </div>
+
+        {/* Kanban columns with DnD */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex gap-4">
+            {KANBAN_STAGES.map(stage => (
+              <DroppableColumn
+                key={stage.id}
+                stage={stage}
+                dealIds={dealIdsByStage[stage.id] || []}
+                allDeals={activeDeals}
+                assessments={assessments}
+                onCardClick={setSelectedDeal}
+              />
+            ))}
+          </div>
+
+          {/* Drag overlay — floating card while dragging */}
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+            {activeDragDeal && (
+              <div className="w-[280px]">
+                <KanbanCardContent
+                  deal={activeDragDeal}
+                  assessment={assessments[activeDragDeal.id]}
+                  onClick={() => {}}
+                  isDragging={true}
+                />
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* Assessment Modal */}
@@ -1078,28 +1162,10 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
           onUpdate={handleAssessmentUpdate}
           onClose={() => setSelectedDeal(null)}
           columnOverrides={mergedOverrides}
+          meetingRatings={meetingRatings}
+          onRateMeeting={rateMeeting}
         />
       )}
-
-      {/* Meeting Detail Modal */}
-      <Modal isOpen={!!selectedMeeting} onClose={() => setSelectedMeeting(null)}>
-        {selectedMeeting && (
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedMeeting.title}</h2>
-              <button onClick={() => setSelectedMeeting(null)} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="space-y-4 mb-6">
-              <div className="flex gap-4"><span className="text-[var(--text-tertiary)] w-24 text-[13px]">Date</span><span className="font-medium text-[var(--text-primary)] text-[13px]">{selectedMeeting.date}</span></div>
-              <div className="flex gap-4"><span className="text-[var(--text-tertiary)] w-24 text-[13px]">Attendees</span><span className="text-[var(--text-primary)] text-[13px]">{selectedMeeting.attendees.join(', ')}</span></div>
-              {selectedMeeting.company && <div className="flex gap-4"><span className="text-[var(--text-tertiary)] w-24 text-[13px]">Company</span><span className="px-2 py-1 rounded-md bg-blue-500/10 text-blue-500 text-[11px] font-medium">{selectedMeeting.company}</span></div>}
-            </div>
-            <button onClick={() => setSelectedMeeting(null)} className="w-full h-10 bg-[var(--rrw-red)] text-white rounded-lg font-medium hover:bg-[var(--rrw-red-hover)] transition-colors">Close</button>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
