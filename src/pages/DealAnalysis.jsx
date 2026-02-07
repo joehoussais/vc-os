@@ -241,7 +241,7 @@ const ASSESSMENT_THEMES = [
       { id: '_s_burn', label: 'Burn & Runway', type: 'section' },
       { id: 'burnForecasts', label: 'Cumulative burn forecasts & break-even timing validated', type: 'check' },
       { id: 'headcountPlan', label: 'Headcount plan reviewed vs productivity assumptions', type: 'check' },
-      { id: 'runway', label: 'Current runway (with this round)', type: 'select', options: ['>24 months', '18-24 months', '12-18 months', '<12 months'] },
+      { id: 'runway', label: 'Current runway (with this round)', type: 'select', options: ['24+ months', '18-24 mo', '12-18 mo', '<12 mo'] },
 
       // ── Unit Economics ──
       { id: '_s_unitEcon', label: 'Unit Economics', type: 'section' },
@@ -331,14 +331,67 @@ const INITIAL_OVERRIDES = {
   'cc2c5d68-b872-4f03-b82c-c1bbd6b7952d': 'analysis', // Sunrise Robotics
 };
 
-const ratingOptions = [1, 2, 3, 4, 6, 7, 8, 9, 10];
+const ratingOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Score weights for select options (higher = better)
+const SELECT_SCORE_MAP = {
+  // Generic positives
+  'Exceptional': 10, 'Excellent': 10, 'Absolutely': 10, 'Strong': 9, 'Yes': 9,
+  'Proven at scale': 10, 'Proven & strong': 10, 'Proven': 9, 'Plug & play': 10,
+  'Seamless': 10, 'Cheap': 10, 'Favorable': 9, 'Certified': 10,
+  'Hair on fire': 10, 'Blue ocean': 10, 'Significantly cheaper': 10,
+  'Very high': 10, 'Resilient': 10, 'Low': 8, 'None': 8,
+  'Compliant': 9, 'Clean': 9, 'Clear': 9, 'Mostly inbound': 9,
+  'Patents filed': 9, '>130%': 10, '<5%': 10, '>5x': 10, '>10x': 10,
+  'Explosive (>30%)': 10, '<6 months': 10, '>24 months': 10,
+
+  // Moderate positives
+  'Good': 7, 'Decent': 7, 'Promising': 7, 'Moderate': 6, 'Somewhat': 6,
+  'Likely': 7, 'Standard': 7, 'Balanced': 7, 'In progress': 6,
+  'Easy (<1 day)': 8, 'Reasonable': 7, 'Mostly': 7,
+  'Few players': 7, 'Somewhat cheaper': 7, 'High': 6,
+  'Medium': 5, 'Some tension': 5, 'Acceptable': 6,
+  'Partially clear': 5, 'Trade secret': 7, 'Planned': 4,
+  '110-130%': 8, '5-10%': 8, '3-5x': 8, '5-10x': 8,
+  'Fast (15-30%)': 8, '6-12 months': 8, '18-24 months': 8,
+  'Right time': 9, 'Unsure': 4,
+
+  // Negatives
+  'Mediocre': 4, 'Weak': 3, 'Poor': 2, 'No': 2, 'Unlikely': 2,
+  'Crowded': 3, 'Uncertain': 3, 'Unclear': 2, 'Negative': 1,
+  'Red ocean': 1, 'Messy': 2, 'Complex (weeks+)': 2, 'Difficult': 2,
+  'Unrealistic': 1, 'Overpriced': 2, 'Unfavorable': 2,
+  'Non-compliant': 1, 'Major issues': 1, 'Problematic': 1, 'Vulnerable': 2,
+  'Race to bottom': 1, 'Cyclical': 3,
+  '10-20%': 5, '20-30%': 3, '>30%': 1, '<90%': 2, '90-100%': 5,
+  '100-110%': 7, '1-2x': 3, '<1x': 1, '2-3x': 5, '<2x': 2,
+  'Slow (<5%)': 2, 'Moderate (5-15%)': 6,
+  // CAC payback (longer = worse)
+  '>24 months': 2, '18-24 months': 4, '12-18 months': 6, '<12 months': 2,
+  // Runway (longer = better)
+  '24+ months': 10, '18-24 mo': 8, '12-18 mo': 5, '<12 mo': 2,
+
+  // Neutral
+  'Too early': 4, 'Late': 3, 'Nice to have': 2,
+  'Weak/indirect': 6, 'Strong/direct': 2,
+  'Similar': 5, 'More expensive': 3,
+  'Open source core': 5, 'Mixed': 6,
+  'Enterprise-focused': 7, 'Mid-market': 7, 'SMB': 5, 'Partner-led': 6,
+  'Mostly outbound': 5,
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+function getRealFields(theme) {
+  return theme.fields.filter(f => f.type !== 'section');
+}
+
 function emptyAssessment() {
   const data = {};
   ASSESSMENT_THEMES.forEach(theme => {
     data[theme.id] = {};
-    theme.fields.forEach(f => { data[theme.id][f.id] = f.type === 'rating' ? null : ''; });
+    getRealFields(theme).forEach(f => {
+      data[theme.id][f.id] = f.type === 'rating' ? null : f.type === 'check' ? false : '';
+    });
   });
   return data;
 }
@@ -346,17 +399,57 @@ function emptyAssessment() {
 function getThemeCompletion(themeData, themeId) {
   const theme = ASSESSMENT_THEMES.find(t => t.id === themeId);
   if (!theme || !themeData) return 0;
-  const filled = theme.fields.filter(f => {
+  const real = getRealFields(theme);
+  const filled = real.filter(f => {
     const val = themeData[f.id];
+    if (f.type === 'check') return val === true;
+    if (f.type === 'rating') return val !== null && val !== undefined;
     return val !== '' && val !== null && val !== undefined;
   }).length;
-  return Math.round((filled / theme.fields.length) * 100);
+  return Math.round((filled / real.length) * 100);
 }
 
 function getOverallCompletion(assessment) {
   if (!assessment) return 0;
   const scores = ASSESSMENT_THEMES.map(t => getThemeCompletion(assessment[t.id], t.id));
   return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+}
+
+function getThemeScore(themeData, themeId) {
+  const theme = ASSESSMENT_THEMES.find(t => t.id === themeId);
+  if (!theme || !themeData) return null;
+  const real = getRealFields(theme);
+  let totalScore = 0;
+  let scoredCount = 0;
+  real.forEach(f => {
+    const val = themeData[f.id];
+    if (f.type === 'rating' && val != null) {
+      totalScore += val;
+      scoredCount++;
+    } else if (f.type === 'check' && val === true) {
+      totalScore += 10;
+      scoredCount++;
+    } else if (f.type === 'check' && val === false) {
+      // not scored — skip
+    } else if (f.type === 'select' && val && val !== '') {
+      const s = SELECT_SCORE_MAP[val];
+      if (s != null) { totalScore += s; scoredCount++; }
+    }
+  });
+  return scoredCount > 0 ? Math.round((totalScore / scoredCount) * 10) / 10 : null;
+}
+
+function getOverallScore(assessment) {
+  if (!assessment) return null;
+  const scores = ASSESSMENT_THEMES.map(t => getThemeScore(assessment[t.id], t.id)).filter(s => s !== null);
+  return scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
+}
+
+function scoreColor(score) {
+  if (score == null) return 'var(--text-quaternary)';
+  if (score >= 7.5) return '#10B981';
+  if (score >= 5) return '#F59E0B';
+  return '#EF4444';
 }
 
 function completionColor(pct) {
@@ -532,9 +625,31 @@ function DroppableColumn({ stage, dealIds, allDeals, assessments, onCardClick })
 
 // ─── Assessment Modal ────────────────────────────────────────────────
 function AssessmentField({ field, value, onChange }) {
+  if (field.type === 'section') {
+    return (
+      <div className="col-span-2 mt-4 mb-1 first:mt-0">
+        <h4 className="text-[12px] font-bold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border-subtle)] pb-1.5">{field.label}</h4>
+      </div>
+    );
+  }
+  if (field.type === 'check') {
+    return (
+      <label className="flex items-start gap-2.5 cursor-pointer group col-span-2 py-1">
+        <div className="relative flex-shrink-0 mt-0.5">
+          <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
+          <div className="w-4.5 h-4.5 w-[18px] h-[18px] rounded border-2 border-[var(--border-default)] peer-checked:border-[var(--rrw-red)] peer-checked:bg-[var(--rrw-red)] transition-all flex items-center justify-center group-hover:border-[var(--rrw-red)]/50">
+            {value && (
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            )}
+          </div>
+        </div>
+        <span className={`text-[12px] leading-snug transition-colors ${value ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'}`}>{field.label}</span>
+      </label>
+    );
+  }
   if (field.type === 'rating') {
     return (
-      <div>
+      <div className="col-span-2 mt-1">
         <label className="text-[11px] font-medium text-[var(--text-tertiary)] block mb-2">{field.label}</label>
         <div className="flex gap-1 flex-wrap">
           {ratingOptions.map(n => (
@@ -555,20 +670,39 @@ function AssessmentField({ field, value, onChange }) {
   );
 }
 
+function ScoreBadge({ score, label }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="text-[18px] font-bold" style={{ color: scoreColor(score) }}>
+        {score != null ? score.toFixed(1) : '—'}
+      </div>
+      <div className="text-[9px] text-[var(--text-quaternary)] uppercase tracking-wider">{label}</div>
+    </div>
+  );
+}
+
 function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides }) {
   const [activeTheme, setActiveTheme] = useState(ASSESSMENT_THEMES[0].id);
   const currentTheme = ASSESSMENT_THEMES.find(t => t.id === activeTheme);
   const themeData = assessment?.[activeTheme] || {};
   const overall = getOverallCompletion(assessment);
+  const overallScore = getOverallScore(assessment);
   const ownerNames = (deal.ownerIds || []).map(id => TEAM_MAP[id]).filter(Boolean);
   const kanbanCol = KANBAN_STAGES.find(s => s.id === getKanbanColumn(deal, columnOverrides));
 
   const handleFieldChange = (fieldId, value) => onUpdate(deal.id, activeTheme, fieldId, value);
 
+  // Count total checks done and total
+  const totalChecks = ASSESSMENT_THEMES.reduce((sum, t) => sum + getRealFields(t).filter(f => f.type === 'check').length, 0);
+  const doneChecks = ASSESSMENT_THEMES.reduce((sum, t) => {
+    const d = assessment?.[t.id] || {};
+    return sum + getRealFields(t).filter(f => f.type === 'check' && d[f.id] === true).length;
+  }, 0);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-4 p-5 border-b border-[var(--border-default)]">
           <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)] overflow-hidden">
@@ -585,54 +719,50 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
               {ownerNames.length > 0 && <span className="text-[12px] text-[var(--text-tertiary)]">{ownerNames.join(', ')}</span>}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <GaugeRing pct={overall} size={52} strokeWidth={3.5} />
+          <div className="flex items-center gap-5">
+            <div className="flex items-center gap-4">
+              <ScoreBadge score={overallScore} label="Score" />
+              <div className="w-px h-8 bg-[var(--border-default)]" />
+              <GaugeRing pct={overall} size={52} strokeWidth={3.5} />
+            </div>
+            <div className="text-center">
+              <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{doneChecks}/{totalChecks}</div>
+              <div className="text-[9px] text-[var(--text-quaternary)]">checks</div>
+            </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
 
-        {/* Theme gauge summary row */}
-        <div className="flex items-center justify-center gap-6 py-3 px-5 bg-[var(--bg-secondary)] border-b border-[var(--border-default)]">
+        {/* Theme tabs — scrollable horizontal, shows score + completion */}
+        <div className="flex border-b border-[var(--border-default)] px-3 gap-0.5 overflow-x-auto bg-[var(--bg-secondary)]">
           {ASSESSMENT_THEMES.map(theme => {
             const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
+            const thScore = getThemeScore(assessment?.[theme.id], theme.id);
             return (
-              <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className={`flex flex-col items-center gap-1 transition-all ${activeTheme === theme.id ? 'scale-110' : 'opacity-70 hover:opacity-100'}`}>
-                <GaugeRing pct={pct} size={40} strokeWidth={2.5} />
-                <span className={`text-[9px] font-medium ${activeTheme === theme.id ? 'text-[var(--text-primary)]' : 'text-[var(--text-quaternary)]'}`}>
-                  {theme.icon} {theme.label.split(' / ')[0].split(' ')[0]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Theme tabs */}
-        <div className="flex border-b border-[var(--border-default)] px-5 gap-1 overflow-x-auto">
-          {ASSESSMENT_THEMES.map(theme => {
-            const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
-            return (
-              <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className={`flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium whitespace-nowrap border-b-2 transition-all ${activeTheme === theme.id ? 'border-[var(--rrw-red)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}>
+              <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className={`flex items-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium whitespace-nowrap border-b-2 transition-all flex-shrink-0 ${activeTheme === theme.id ? 'border-[var(--rrw-red)] text-[var(--text-primary)] bg-[var(--bg-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}>
                 <span>{theme.icon}</span>
-                <span>{theme.label}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: pct > 0 ? completionColor(pct) + '20' : 'var(--bg-tertiary)', color: pct > 0 ? completionColor(pct) : 'var(--text-quaternary)' }}>{pct}%</span>
+                <span className="hidden xl:inline">{theme.label}</span>
+                <span className="xl:hidden">{theme.label.split(' ')[0]}</span>
+                {thScore != null && <span className="text-[10px] font-bold" style={{ color: scoreColor(thScore) }}>{thScore.toFixed(1)}</span>}
+                <span className="text-[10px] px-1 py-0.5 rounded-full font-semibold" style={{ backgroundColor: pct > 0 ? completionColor(pct) + '20' : 'var(--bg-tertiary)', color: pct > 0 ? completionColor(pct) : 'var(--text-quaternary)' }}>{pct}%</span>
               </button>
             );
           })}
         </div>
 
-        {/* Theme content */}
+        {/* Theme content — scrollable */}
         <div className="flex-1 overflow-y-auto p-5">
           {currentTheme && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               {currentTheme.fields.map(field => (
-                <div key={field.id} className={field.type === 'rating' ? 'col-span-2' : ''}>
-                  <AssessmentField field={field} value={themeData[field.id]} onChange={(val) => handleFieldChange(field.id, val)} />
-                </div>
+                <AssessmentField key={field.id} field={field} value={themeData[field.id]} onChange={(val) => handleFieldChange(field.id, val)} />
               ))}
             </div>
           )}
+
+          {/* Deal metadata footer */}
           <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
             <div className="grid grid-cols-3 gap-4 text-[12px]">
               {deal.amountInMeu != null && deal.amountInMeu > 0 && (
@@ -650,6 +780,33 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
               {deal.createdAt && (
                 <div><span className="text-[var(--text-quaternary)] block mb-1">Created</span><span className="text-[var(--text-secondary)]">{deal.createdAt}</span></div>
               )}
+            </div>
+          </div>
+
+          {/* Score summary across all themes */}
+          <div className="mt-4 pt-4 border-t border-[var(--border-default)]">
+            <div className="flex items-center gap-2 mb-3">
+              <h4 className="text-[12px] font-bold text-[var(--text-secondary)]">Score Summary</h4>
+              {overallScore != null && (
+                <span className="text-[13px] font-bold px-2 py-0.5 rounded-md" style={{ color: scoreColor(overallScore), backgroundColor: scoreColor(overallScore) + '15' }}>
+                  {overallScore.toFixed(1)} / 10
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-5 gap-3">
+              {ASSESSMENT_THEMES.map(theme => {
+                const s = getThemeScore(assessment?.[theme.id], theme.id);
+                const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
+                return (
+                  <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className="text-center p-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors">
+                    <div className="text-[14px] font-bold" style={{ color: scoreColor(s) }}>{s != null ? s.toFixed(1) : '—'}</div>
+                    <div className="text-[9px] text-[var(--text-quaternary)] truncate">{theme.icon} {theme.label.split(' ')[0]}</div>
+                    <div className="mt-1 h-1 bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: completionColor(pct) }} />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
