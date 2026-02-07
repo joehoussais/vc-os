@@ -199,8 +199,7 @@ export function getEntryValue(entry, slug) {
 
   const val = attr[0];
   if (val.value !== undefined) return val.value;         // checkbox, text, number
-  // Attio stores currency_value in 10^-8 units — convert to base currency
-  if (val.currency_value !== undefined) return val.currency_value / 1e8;
+  if (val.currency_value !== undefined) return val.currency_value; // currency (base unit, e.g. EUR)
   if (val.status) return val.status.title;
   if (val.option) return val.option.title;
   return val;
@@ -282,8 +281,8 @@ export function getAttrValue(record, slug) {
   if (val.domain !== undefined) return val.domain;
   // location → return the whole location object (has .country_code, .locality, etc.)
   if (val.country_code !== undefined) return val;
-  // currency → .currency_value (Attio stores in 10^-8 units, convert to base)
-  if (val.currency_value !== undefined) return val.currency_value / 1e8;
+  // currency → .currency_value (base unit, e.g. EUR)
+  if (val.currency_value !== undefined) return val.currency_value;
   // full name (person) → .full_name
   if (val.full_name !== undefined) return val.full_name;
 

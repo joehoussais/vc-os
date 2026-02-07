@@ -93,12 +93,11 @@ function setCachedLPs(lps) {
 }
 
 // Helper to extract currency value from Attio currency attribute
-// Attio stores currency_value in 10^-8 units — convert to base currency
 function getCurrencyValue(record, slug) {
   const attr = record?.values?.[slug];
   if (!attr || !attr.length) return null;
   const val = attr[0];
-  if (val.currency_value !== undefined) return parseFloat(val.currency_value) / 1e8;
+  if (val.currency_value !== undefined) return parseFloat(val.currency_value);
   if (val.value !== undefined) return parseFloat(val.value);
   return null;
 }
