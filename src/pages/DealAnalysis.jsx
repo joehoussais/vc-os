@@ -315,7 +315,7 @@ const SELECT_SCORE_MAP = {
   'Very high': 10, 'Resilient': 10, 'Low': 8, 'None': 8,
   'Compliant': 9, 'Clean': 9, 'Clear': 9, 'Mostly inbound': 9,
   'Patents filed': 9, '>130%': 10, '<5%': 10, '>5x': 10, '>10x': 10,
-  'Explosive (>30%)': 10, '<6 months': 10, '>24 months': 10,
+  'Explosive (>30%)': 10,
 
   // Moderate positives
   'Good': 7, 'Decent': 7, 'Promising': 7, 'Moderate': 6, 'Somewhat': 6,
@@ -325,7 +325,7 @@ const SELECT_SCORE_MAP = {
   'Medium': 5, 'Some tension': 5, 'Acceptable': 6,
   'Partially clear': 5, 'Trade secret': 7, 'Planned': 4,
   '110-130%': 8, '5-10%': 8, '3-5x': 8, '5-10x': 8,
-  'Fast (15-30%)': 8, '6-12 months': 8, '18-24 months': 8,
+  'Fast (15-30%)': 8,
   'Right time': 9, 'Unsure': 4,
 
   // Negatives
@@ -338,8 +338,8 @@ const SELECT_SCORE_MAP = {
   '10-20%': 5, '20-30%': 3, '>30%': 1, '<90%': 2, '90-100%': 5,
   '100-110%': 7, '1-2x': 3, '<1x': 1, '2-3x': 5, '<2x': 2,
   'Slow (<5%)': 2, 'Moderate (5-15%)': 6,
-  // CAC payback (longer = worse)
-  '>24 months': 2, '18-24 months': 4, '12-18 months': 6, '<12 months': 2,
+  // CAC payback (shorter = better)
+  '<6 months': 10, '6-12 months': 8, '12-18 months': 6, '18-24 months': 4, '>24 months': 2,
   // Runway (longer = better)
   '24+ months': 10, '18-24 mo': 8, '12-18 mo': 5, '<12 mo': 2,
 
@@ -672,114 +672,124 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
   }, 0);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-4 p-5 border-b border-[var(--border-default)]">
-          <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-lg font-bold text-[var(--text-tertiary)] overflow-hidden">
-            {deal.domain ? (
-              <img src={`https://www.google.com/s2/favicons?domain=${deal.domain}&sz=128`} alt="" className="w-10 h-10 object-contain" />
-            ) : (deal.name?.split(' - ')[0] || 'D').charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{deal.name}</h2>
-            <div className="flex items-center gap-3 mt-0.5">
-              {kanbanCol && (
-                <span className="text-[11px] px-2 py-0.5 rounded-md font-medium text-white" style={{ backgroundColor: kanbanCol.color }}>{kanbanCol.label}</span>
-              )}
-              {ownerNames.length > 0 && <span className="text-[12px] text-[var(--text-tertiary)]">{ownerNames.join(', ')}</span>}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      {/* Backdrop — only closes on direct click, not drag/accidental */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} />
+
+      {/* Modal container — fixed height to prevent resizing */}
+      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl flex overflow-hidden" style={{ width: 'min(1100px, calc(100vw - 48px))', height: 'min(85vh, 820px)' }}>
+
+        {/* ─── Left sidebar: nav + scores ─── */}
+        <div className="w-[220px] flex-shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border-default)] flex flex-col">
+          {/* Company header */}
+          <div className="p-4 border-b border-[var(--border-default)]">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-sm font-bold text-[var(--text-tertiary)] overflow-hidden flex-shrink-0">
+                {deal.domain ? (
+                  <img src={`https://www.google.com/s2/favicons?domain=${deal.domain}&sz=64`} alt="" className="w-8 h-8 object-contain" />
+                ) : (deal.name?.split(' - ')[0] || 'D').charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate">{deal.name?.split(' - ')[0] || deal.name}</div>
+                {kanbanCol && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium text-white inline-block mt-0.5" style={{ backgroundColor: kanbanCol.color }}>{kanbanCol.label}</span>
+                )}
+              </div>
+            </div>
+            {/* Overall stats */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <GaugeRing pct={overall} size={40} strokeWidth={3} />
+                <div>
+                  <div className="text-[16px] font-bold" style={{ color: scoreColor(overallScore) }}>{overallScore != null ? overallScore.toFixed(1) : '—'}</div>
+                  <div className="text-[9px] text-[var(--text-quaternary)] uppercase">Score</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[12px] font-semibold text-[var(--text-secondary)]">{doneChecks}/{totalChecks}</div>
+                <div className="text-[9px] text-[var(--text-quaternary)]">checks</div>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-4">
-              <ScoreBadge score={overallScore} label="Score" />
-              <div className="w-px h-8 bg-[var(--border-default)]" />
-              <GaugeRing pct={overall} size={52} strokeWidth={3.5} />
+
+          {/* Theme nav buttons */}
+          <div className="flex-1 overflow-y-auto py-1.5">
+            {ASSESSMENT_THEMES.map(theme => {
+              const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
+              const thScore = getThemeScore(assessment?.[theme.id], theme.id);
+              const isActive = activeTheme === theme.id;
+              return (
+                <button
+                  key={theme.id}
+                  onClick={() => setActiveTheme(theme.id)}
+                  className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors ${
+                    isActive
+                      ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] border-r-2 border-[var(--rrw-red)]'
+                      : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <span className="text-[14px]">{theme.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[11px] font-medium truncate ${isActive ? 'text-[var(--text-primary)]' : ''}`}>{theme.label}</div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex-1 h-1 bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: completionColor(pct) }} />
+                      </div>
+                      <span className="text-[9px] font-semibold w-7 text-right" style={{ color: completionColor(pct) }}>{pct}%</span>
+                    </div>
+                  </div>
+                  {thScore != null && (
+                    <span className="text-[11px] font-bold flex-shrink-0" style={{ color: scoreColor(thScore) }}>{thScore.toFixed(1)}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Deal metadata at sidebar bottom */}
+          <div className="p-3 border-t border-[var(--border-default)] space-y-1.5">
+            {deal.amountInMeu != null && deal.amountInMeu > 0 && (
+              <div className="flex justify-between text-[10px]"><span className="text-[var(--text-quaternary)]">Round</span><span className="text-[var(--text-secondary)] font-medium">{deal.amountInMeu}M€</span></div>
+            )}
+            {ownerNames.length > 0 && (
+              <div className="flex justify-between text-[10px]"><span className="text-[var(--text-quaternary)]">Owner</span><span className="text-[var(--text-secondary)] font-medium truncate ml-2">{ownerNames.join(', ')}</span></div>
+            )}
+            {deal.maxStatus5 && (
+              <div className="flex justify-between text-[10px]"><span className="text-[var(--text-quaternary)]">Status</span><span className="text-[var(--text-secondary)] font-medium">{deal.maxStatus5}</span></div>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Right: content area ─── */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Content header with theme name + close button */}
+          <div className="flex items-center justify-between px-6 py-3.5 border-b border-[var(--border-default)] flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[18px]">{currentTheme?.icon}</span>
+              <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">{currentTheme?.label}</h3>
+              {(() => {
+                const pct = getThemeCompletion(assessment?.[activeTheme], activeTheme);
+                return (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: pct > 0 ? completionColor(pct) + '15' : 'var(--bg-tertiary)', color: pct > 0 ? completionColor(pct) : 'var(--text-quaternary)' }}>
+                    {pct}% complete
+                  </span>
+                );
+              })()}
             </div>
-            <div className="text-center">
-              <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{doneChecks}/{totalChecks}</div>
-              <div className="text-[9px] text-[var(--text-quaternary)]">checks</div>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)]">
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
-        </div>
 
-        {/* Theme tabs — scrollable horizontal, shows score + completion */}
-        <div className="flex border-b border-[var(--border-default)] px-3 gap-0.5 overflow-x-auto bg-[var(--bg-secondary)]">
-          {ASSESSMENT_THEMES.map(theme => {
-            const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
-            const thScore = getThemeScore(assessment?.[theme.id], theme.id);
-            return (
-              <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className={`flex items-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium whitespace-nowrap border-b-2 transition-all flex-shrink-0 ${activeTheme === theme.id ? 'border-[var(--rrw-red)] text-[var(--text-primary)] bg-[var(--bg-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}>
-                <span>{theme.icon}</span>
-                <span className="hidden xl:inline">{theme.label}</span>
-                <span className="xl:hidden">{theme.label.split(' ')[0]}</span>
-                {thScore != null && <span className="text-[10px] font-bold" style={{ color: scoreColor(thScore) }}>{thScore.toFixed(1)}</span>}
-                <span className="text-[10px] px-1 py-0.5 rounded-full font-semibold" style={{ backgroundColor: pct > 0 ? completionColor(pct) + '20' : 'var(--bg-tertiary)', color: pct > 0 ? completionColor(pct) : 'var(--text-quaternary)' }}>{pct}%</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Theme content — scrollable */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {currentTheme && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              {currentTheme.fields.map(field => (
-                <AssessmentField key={field.id} field={field} value={themeData[field.id]} onChange={(val) => handleFieldChange(field.id, val)} />
-              ))}
-            </div>
-          )}
-
-          {/* Deal metadata footer */}
-          <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
-            <div className="grid grid-cols-3 gap-4 text-[12px]">
-              {deal.amountInMeu != null && deal.amountInMeu > 0 && (
-                <div><span className="text-[var(--text-quaternary)] block mb-1">Round size</span><span className="text-[var(--text-secondary)] font-semibold">{deal.amountInMeu}M€</span></div>
-              )}
-              {deal.sourceType && (
-                <div><span className="text-[var(--text-quaternary)] block mb-1">Source</span><span className="text-[var(--text-secondary)]">{deal.sourceType}</span></div>
-              )}
-              {deal.foundingTeam && (
-                <div><span className="text-[var(--text-quaternary)] block mb-1">Founding team</span><span className="text-[var(--text-secondary)]">{deal.foundingTeam}</span></div>
-              )}
-              {deal.maxStatus5 && (
-                <div><span className="text-[var(--text-quaternary)] block mb-1">Max status</span><span className="text-[var(--text-secondary)]">{deal.maxStatus5}</span></div>
-              )}
-              {deal.createdAt && (
-                <div><span className="text-[var(--text-quaternary)] block mb-1">Created</span><span className="text-[var(--text-secondary)]">{deal.createdAt}</span></div>
-              )}
-            </div>
-          </div>
-
-          {/* Score summary across all themes */}
-          <div className="mt-4 pt-4 border-t border-[var(--border-default)]">
-            <div className="flex items-center gap-2 mb-3">
-              <h4 className="text-[12px] font-bold text-[var(--text-secondary)]">Score Summary</h4>
-              {overallScore != null && (
-                <span className="text-[13px] font-bold px-2 py-0.5 rounded-md" style={{ color: scoreColor(overallScore), backgroundColor: scoreColor(overallScore) + '15' }}>
-                  {overallScore.toFixed(1)} / 10
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-5 gap-3">
-              {ASSESSMENT_THEMES.map(theme => {
-                const s = getThemeScore(assessment?.[theme.id], theme.id);
-                const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
-                return (
-                  <button key={theme.id} onClick={() => setActiveTheme(theme.id)} className="text-center p-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors">
-                    <div className="text-[14px] font-bold" style={{ color: scoreColor(s) }}>{s != null ? s.toFixed(1) : '—'}</div>
-                    <div className="text-[9px] text-[var(--text-quaternary)] truncate">{theme.icon} {theme.label.split(' ')[0]}</div>
-                    <div className="mt-1 h-1 bg-[var(--border-subtle)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: completionColor(pct) }} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Scrollable fields */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {currentTheme && (
+              <div className="grid grid-cols-2 gap-x-5 gap-y-1">
+                {currentTheme.fields.map(field => (
+                  <AssessmentField key={field.id} field={field} value={themeData[field.id]} onChange={(val) => handleFieldChange(field.id, val)} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
