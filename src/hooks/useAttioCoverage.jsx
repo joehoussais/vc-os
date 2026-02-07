@@ -4,6 +4,7 @@ import {
   getAttrValue, getAttrValues, getEntryValue, getLocationCountryCode,
   getCachedCoverage, setCachedCoverage,
 } from '../services/attioApi';
+import { getSlackSignal, OUTCOME_OVERRIDES } from '../data/slackSignals';
 
 // Country code to region mapping
 const countryToRegion = {
@@ -148,13 +149,16 @@ export function useAttioCoverage() {
       // ── Reception label (best → worst) ──────────────────────
       // Outcome is the SINGLE source of truth. "Seen" derives from it.
       //
-      // Signals (strongest first):
-      //   1. companyStatus — CRM pipeline stage is ground truth
-      //   2. dealComment — non-empty comment = someone wrote analysis
-      //   3. dealStatus 'deal flow' — deck was received & reviewed
-      //   4. ownerIds — deal was assigned to a team member
-      //   5. hadContact — email/calendar interaction or CRM contact status
-      //   6. anySeen — any passive signal (status, received date, etc.)
+      // Priority order:
+      //   1. Portfolio → Invested (CRM ground truth)
+      //   2. IC / Due Diligence → Analysed & Lost (serious effort, lost)
+      //   3. Passed / To Decline / etc → Analysed & Passed (CRM explicit pass)
+      //   4. OUTCOME_OVERRIDES → forced outcome (manual edge cases)
+      //   5. Slack dealflow/unqualified → Analysed & Passed (deck received)
+      //   6. hasComment || isDealflow → Analysed & Passed (existing CRM signals)
+      //   7. Slack proactive || hadContact → Tried, No Response
+      //   8. anySeen → Saw, Didn't Try
+      //   9. else → Completely Missed
       //
       const statusSeen = dealStatus === 'deal flow' ||
         dealStatus === 'Announced deals we saw' ||
@@ -173,26 +177,34 @@ export function useAttioCoverage() {
       const anySeen = statusSeen || companyProgressed || hasEmailInteraction ||
         hasCalendarInteraction || !!receivedDate || hasOwner;
 
+      // Slack signals — strongest automated signal for "we saw this deal"
+      const slackSignal = getSlackSignal(dealName);
+      const slackDealflow = slackSignal?.dealflow || slackSignal?.unqualified;
+      const slackProactive = slackSignal?.proactive;
+
       let outcome = 'Completely Missed';
 
       if (companyStatus === 'Portfolio') {
-        // Ground truth: we invested
         outcome = 'Invested';
-      } else if (companyStatus === 'IC') {
-        // Went to IC but didn't invest = outcompeted
+      } else if (companyStatus === 'IC' ||
+                 ['Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
+        // Went to IC or DD = serious effort, lost to competition
         outcome = 'Analysed & Lost';
       } else if (['Passed', 'To Decline', 'Analysed but too early',
-                   'No US path for now', 'Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
-        // Explicit pass in CRM
+                   'No US path for now'].includes(companyStatus)) {
+        outcome = 'Analysed & Passed';
+      } else if (OUTCOME_OVERRIDES[dealRecordId]) {
+        // Manual override for edge cases (checked before automated signals)
+        outcome = OUTCOME_OVERRIDES[dealRecordId];
+      } else if (slackDealflow) {
+        // Deck was shared in Slack dealflow channels = we analysed it
         outcome = 'Analysed & Passed';
       } else if (hasComment || isDealflow) {
-        // Deal has written analysis OR was received as dealflow (deck shared = analysed)
         outcome = 'Analysed & Passed';
-      } else if (hadContact) {
-        // We actually reached out (email/calendar/CRM contact) but no analysis
+      } else if (slackProactive || hadContact) {
+        // Slack proactive sourcing or CRM contact signals = we tried
         outcome = 'Tried, No Response';
       } else if (anySeen) {
-        // Passive signals: owner assigned, status seen, received date, etc.
         outcome = "Saw, Didn't Try";
       }
       // else stays 'Completely Missed'
