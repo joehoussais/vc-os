@@ -187,11 +187,11 @@ export function useAttioCoverage() {
       } else if (hasComment || isDealflow) {
         // Deal has written analysis OR was received as dealflow (deck shared = analysed)
         outcome = 'Analysed & Passed';
-      } else if (hadContact || hasOwner) {
-        // We reached out or someone was assigned, but no analysis written
+      } else if (hadContact) {
+        // We actually reached out (email/calendar/CRM contact) but no analysis
         outcome = 'Tried, No Response';
       } else if (anySeen) {
-        // Passive signals only — we noticed but didn't act
+        // Passive signals: owner assigned, status seen, received date, etc.
         outcome = "Saw, Didn't Try";
       }
       // else stays 'Completely Missed'
