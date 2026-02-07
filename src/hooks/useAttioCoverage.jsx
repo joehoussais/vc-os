@@ -46,14 +46,8 @@ function parseStageFromDealId(dealId) {
 
 function formatAmount(amount) {
   if (!amount) return null;
-  // Attio currency_value is in 10^-8 units (e.g., €64.6M = 6464997600000000)
-  // Divide by 10^14 to get millions (10^8 for base currency, 10^6 for M)
-  if (typeof amount === 'number') {
-    if (amount > 1e12) return Math.round(amount / 1e14); // Attio currency micro-units → M
-    if (amount > 1e9) return Math.round(amount / 1e8);   // Attio cents → M (fallback)
-    return Math.round(amount / 1e6);                      // Raw base currency → M
-  }
-  // String format like "€64,649,976.00" — extract digits, parse as base currency
+  // amount is in base currency (e.g., 64649976 for €64.6M) → convert to millions
+  if (typeof amount === 'number') return Math.round(amount / 1000000);
   const numMatch = String(amount).match(/[\d,]+/);
   if (!numMatch) return null;
   const num = parseFloat(numMatch[0].replace(/,/g, ''));
