@@ -237,3 +237,35 @@ export const SHADOW_STATS = {
   tbd: SHADOW_PORTFOLIO.filter(d => d.verdict === 'tbd').length,
   active: SHADOW_PORTFOLIO.filter(d => d.verdict === 'active').length,
 };
+
+// Cross-portfolio pattern learnings — distilled from individual company analyses
+export const SHADOW_PATTERNS = [
+  {
+    id: 'macro-tailwinds',
+    title: 'Macro tailwinds trump valuation concerns',
+    description: 'Defence tech (Harmattan), offshore wind (XOCEAN), remote work (Naboo) — all 3 wrong calls were driven by macro shifts we underweighted. When a sector has structural tailwinds, conviction matters more than current valuation.',
+    companies: ['shadow-harmattan', 'shadow-xocean', 'shadow-naboo'],
+    accent: 'red',
+  },
+  {
+    id: 'founder-audacity',
+    title: '"Crazy" founders build category-defining companies',
+    description: 'The audacity we flagged as a risk in Harmattan was exactly the trait that built a unicorn in 18 months. Boldness in regulated markets is a feature, not a bug.',
+    companies: ['shadow-harmattan'],
+    accent: 'red',
+  },
+  {
+    id: 'too-early-followup',
+    title: '"Too early" needs a re-engage trigger',
+    description: 'Naboo was passed at €31M — no follow-up mechanism. One year later: €50M from Lightspeed. A "too early" verdict should start a clock, not close a file.',
+    companies: ['shadow-naboo'],
+    accent: 'amber',
+  },
+  {
+    id: 'staying-in-lane',
+    title: 'Staying in lane works',
+    description: 'Consumer social (Yubo) and out-of-scope passes were correct calls. Not every company that raises money is one we should have invested in — fit with fund strategy matters.',
+    companies: ['shadow-yubo', 'shadow-upciti'],
+    accent: 'emerald',
+  },
+];
