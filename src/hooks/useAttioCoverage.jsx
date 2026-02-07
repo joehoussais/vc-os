@@ -129,41 +129,6 @@ export function useAttioCoverage() {
         : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
-      // ── Reception label (best → worst) ──────────────────────
-      // Outcome is the SINGLE source of truth. "Seen" derives from it.
-      //
-      // Internal signals used to determine outcome:
-      const statusSeen = dealStatus === 'deal flow' ||
-        dealStatus === 'Announced deals we saw' ||
-        dealStatus === 'deal rumors';
-      const companyProgressed = companyStatus && [
-        'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
-        'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
-        'Passed', 'Analysed but too early', 'To Decline'
-      ].includes(companyStatus);
-      const hadContact = hasEmailInteraction || hasCalendarInteraction ||
-        companyStatus === 'Contacted / to meet' || companyStatus === 'Met';
-      const anySeen = statusSeen || companyProgressed || hasEmailInteraction || hasCalendarInteraction || !!receivedDate;
-
-      let outcome = 'Completely Missed';
-
-      if (companyStatus === 'Portfolio') {
-        outcome = 'Invested';
-      } else if (companyStatus === 'IC') {
-        outcome = 'Analysed & Lost';
-      } else if (['Passed', 'To Decline', 'Analysed but too early',
-                   'No US path for now', 'Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
-        outcome = 'Analysed & Passed';
-      } else if (anySeen && hadContact) {
-        outcome = 'Tried, No Response';
-      } else if (anySeen) {
-        outcome = "Saw, Didn't Try";
-      }
-      // else stays 'Completely Missed'
-
-      // "Seen" = anything that isn't Completely Missed
-      const seen = outcome !== 'Completely Missed';
-
       // Industry
       const dealIndustry = getAttrValues(deal, 'industry');
       const categories = dealIndustry.length > 0 ? dealIndustry : (company ? getAttrValues(company, 'categories') : []);
@@ -178,6 +143,61 @@ export function useAttioCoverage() {
       // Extra fields
       const reasonsToDecline = company ? getAttrValue(company, 'reasons_to_decline') : null;
       const dealComment = getAttrValue(deal, 'comment');
+
+      // ── Reception label (best → worst) ──────────────────────
+      // Outcome is the SINGLE source of truth. "Seen" derives from it.
+      //
+      // Signals (strongest first):
+      //   1. companyStatus — CRM pipeline stage is ground truth
+      //   2. dealComment — non-empty comment = someone wrote analysis
+      //   3. dealStatus 'deal flow' — deck was received & reviewed
+      //   4. ownerIds — deal was assigned to a team member
+      //   5. hadContact — email/calendar interaction or CRM contact status
+      //   6. anySeen — any passive signal (status, received date, etc.)
+      //
+      const statusSeen = dealStatus === 'deal flow' ||
+        dealStatus === 'Announced deals we saw' ||
+        dealStatus === 'announced' ||
+        dealStatus === 'deal rumors';
+      const companyProgressed = companyStatus && [
+        'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
+        'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
+        'Passed', 'Analysed but too early', 'To Decline'
+      ].includes(companyStatus);
+      const hadContact = hasEmailInteraction || hasCalendarInteraction ||
+        companyStatus === 'Contacted / to meet' || companyStatus === 'Met';
+      const hasOwner = ownerIds.length > 0;
+      const hasComment = !!dealComment && dealComment.trim().length > 0;
+      const isDealflow = dealStatus === 'deal flow';
+      const anySeen = statusSeen || companyProgressed || hasEmailInteraction ||
+        hasCalendarInteraction || !!receivedDate || hasOwner;
+
+      let outcome = 'Completely Missed';
+
+      if (companyStatus === 'Portfolio') {
+        // Ground truth: we invested
+        outcome = 'Invested';
+      } else if (companyStatus === 'IC') {
+        // Went to IC but didn't invest = outcompeted
+        outcome = 'Analysed & Lost';
+      } else if (['Passed', 'To Decline', 'Analysed but too early',
+                   'No US path for now', 'Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
+        // Explicit pass in CRM
+        outcome = 'Analysed & Passed';
+      } else if (hasComment || isDealflow) {
+        // Deal has written analysis OR was received as dealflow (deck shared = analysed)
+        outcome = 'Analysed & Passed';
+      } else if (hadContact || hasOwner) {
+        // We reached out or someone was assigned, but no analysis written
+        outcome = 'Tried, No Response';
+      } else if (anySeen) {
+        // Passive signals only — we noticed but didn't act
+        outcome = "Saw, Didn't Try";
+      }
+      // else stays 'Completely Missed'
+
+      // "Seen" = anything that isn't Completely Missed
+      const seen = outcome !== 'Completely Missed';
       const fundingRaisedUsd = company ? getAttrValue(company, 'funding_raised_usd') : null;
       const lastFundingStatus = company ? getAttrValue(company, 'last_funding_status_46') : null;
       const lastFundingDate = company ? getAttrValue(company, 'last_funding_date') : null;

@@ -67,6 +67,16 @@ const OUTCOME_STYLES = {
   'Completely Missed': 'bg-red-500/10 text-red-500',
 };
 
+// Pie chart colors matching outcome badge colors
+const OUTCOME_PIE_COLORS = {
+  'Invested': '#10b981',        // emerald-500
+  'Analysed & Passed': '#3b82f6', // blue-500
+  'Analysed & Lost': '#a855f7',  // purple-500
+  'Tried, No Response': '#f59e0b', // amber-500
+  "Saw, Didn't Try": '#9ca3af',  // gray-400
+  'Completely Missed': '#ef4444', // red-500
+};
+
 // ─── OBJECTIVE Market Score ───────────────────────────────
 // Pure market signal: did the company succeed AFTER we passed?
 // No opinions — only facts.
@@ -490,7 +500,7 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <PieCard title="Companies by region" labels={Object.keys(coverageByRegion)} data={Object.values(coverageByRegion).map(v => v.total)} options={pieOptions} />
         <PieCard title="Companies by stage" labels={Object.keys(pieData.stageData)} data={Object.values(pieData.stageData)} options={pieOptions} />
-        <PieCard title="Outcome breakdown" labels={Object.keys(pieData.outcomeData)} data={Object.values(pieData.outcomeData)} options={pieOptions} />
+        <PieCard title="Outcome breakdown" labels={Object.keys(pieData.outcomeData)} data={Object.values(pieData.outcomeData)} colors={Object.keys(pieData.outcomeData).map(k => OUTCOME_PIE_COLORS[k] || '#6b7280')} options={pieOptions} />
       </div>
 
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
