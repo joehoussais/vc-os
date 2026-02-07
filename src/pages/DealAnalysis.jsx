@@ -15,6 +15,41 @@ import { granolaMeetings } from '../data/mockData';
 import Modal from '../components/Modal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
+// ─── Theme icons (inline SVGs, no emojis) ────────────────────────────
+const THEME_ICONS = {
+  founder: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  market: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z" />
+    </svg>
+  ),
+  product: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+    </svg>
+  ),
+  traction: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  ),
+  deal: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+    </svg>
+  ),
+  legal: (sz = 16) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" /><path d="M12 8v4l3 3" />
+      <path d="M3.5 12H2m20 0h-1.5M12 3.5V2m0 20v-1.5" />
+    </svg>
+  ),
+};
+
 // ─── Assessment schema ───────────────────────────────────────────────
 // Field types:
 //   select  — dropdown with options
@@ -25,7 +60,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'founder',
     label: 'Founders & Team',
-    icon: '👤',
+    icon: 'founder',
     fields: [
       // ── Founders ──
       { id: '_s_founders', label: 'Founders', type: 'section' },
@@ -60,7 +95,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'market',
     label: 'Market & Competition',
-    icon: '🌍',
+    icon: 'market',
     fields: [
       // ── Problem & Scope ──
       { id: '_s_problem', label: 'Problem Definition & Scope', type: 'section' },
@@ -108,7 +143,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'product',
     label: 'Product & Technology',
-    icon: '🛠️',
+    icon: 'product',
     fields: [
       // ── Workflow & UX ──
       { id: '_s_workflow', label: 'Workflow & UX', type: 'section' },
@@ -161,7 +196,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'traction',
     label: 'Traction, GTM & Financials',
-    icon: '📊',
+    icon: 'traction',
     fields: [
       // ── Customer Reality ──
       { id: '_s_customers', label: 'Customer Reality Checks', type: 'section' },
@@ -232,7 +267,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'deal',
     label: 'Deal & Valuation',
-    icon: '🤝',
+    icon: 'deal',
     fields: [
       // ── Valuation ──
       { id: '_s_valuation', label: 'Valuation', type: 'section' },
@@ -257,7 +292,7 @@ const ASSESSMENT_THEMES = [
   {
     id: 'legal',
     label: 'Legal, Regulatory & ESG',
-    icon: '⚖️',
+    icon: 'legal',
     fields: [
       // ── Privacy & Regulation ──
       { id: '_s_privacy', label: 'Privacy & Surveillance Regulation', type: 'section' },
@@ -543,7 +578,7 @@ function KanbanCardContent({ deal, assessment, onClick, isDragging }) {
       <div className="space-y-1">
         {ASSESSMENT_THEMES.map(theme => {
           const pct = getThemeCompletion(assessment?.[theme.id], theme.id);
-          return <MiniProgressBar key={theme.id} pct={pct} label={`${theme.icon} ${theme.label.split(' / ')[0].split(' ')[0]}`} />;
+          return <MiniProgressBar key={theme.id} pct={pct} label={theme.label.split(' & ')[0].split(',')[0]} />;
         })}
       </div>
       {deal.amountInMeu != null && deal.amountInMeu > 0 && (
@@ -728,7 +763,7 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
                       : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'
                   }`}
                 >
-                  <span className="text-[14px]">{theme.icon}</span>
+                  <span className="flex-shrink-0 text-[var(--text-quaternary)]">{THEME_ICONS[theme.icon]?.(14)}</span>
                   <div className="flex-1 min-w-0">
                     <div className={`text-[11px] font-medium truncate ${isActive ? 'text-[var(--text-primary)]' : ''}`}>{theme.label}</div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -765,7 +800,7 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides 
           {/* Content header with theme name + close button */}
           <div className="flex items-center justify-between px-6 py-3.5 border-b border-[var(--border-default)] flex-shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-[18px]">{currentTheme?.icon}</span>
+              <span className="text-[var(--text-tertiary)]">{THEME_ICONS[currentTheme?.icon]?.(20)}</span>
               <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">{currentTheme?.label}</h3>
               {(() => {
                 const pct = getThemeCompletion(assessment?.[activeTheme], activeTheme);
