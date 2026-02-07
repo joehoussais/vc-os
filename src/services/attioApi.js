@@ -161,18 +161,26 @@ export async function fetchAllLPs() {
 }
 
 // Fetch all entries from the Deal Coverage list (has in_scope, received, amount)
+// Note: Attio list entries API does not return next_page_offset, so we manually
+// paginate by incrementing offset until we get fewer results than the batch size.
 export async function fetchListEntries() {
+  const BATCH = 500;
   let allEntries = [];
-  let offset = null;
+  let offset = 0;
 
-  do {
-    const payload = { limit: 100 };
-    if (offset) payload.offset = offset;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const payload = { limit: BATCH };
+    if (offset > 0) payload.offset = offset;
 
     const data = await attioQuery('/lists/deal_coverage_6/entries/query', payload);
-    allEntries = allEntries.concat(data.data || []);
-    offset = data.next_page_offset || null;
-  } while (offset);
+    const batch = data.data || [];
+    allEntries = allEntries.concat(batch);
+
+    // If we got fewer than BATCH, we've reached the end
+    if (batch.length < BATCH) break;
+    offset += BATCH;
+  }
 
   return allEntries;
 }
