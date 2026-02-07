@@ -68,11 +68,21 @@ const ASSESSMENT_THEMES = [
 
 // Kanban columns — map Attio satus values to columns
 const KANBAN_STAGES = [
-  { id: 'dealflow', label: 'Deal Flow', color: '#3B82F6', satusValues: ['Dealflow qualification', 'To Meet', 'Coming soon', 'Standby'] },
-  { id: 'met', label: 'Met', color: '#10B981', satusValues: ['Met'] },
-  { id: 'analysis', label: 'In-Depth Analysis', color: '#8B5CF6', satusValues: [] }, // populated via max_status_5
-  { id: 'committee', label: 'Committee', color: '#F59E0B', satusValues: ['Committee'] },
+  { id: 'met', label: 'Met', color: '#10B981' },
+  { id: 'analysis', label: 'In-Depth Analysis', color: '#8B5CF6' },
+  { id: 'committee', label: 'Committee', color: '#F59E0B' },
 ];
+
+// Active pipeline stages to show in Deal Analysis — only deals we're actively working
+const ACTIVE_SATUS = new Set(['Met', 'Committee']);
+
+// Manual column overrides: entry_id → kanban column
+// Used when a deal should be in a different column than its Attio satus suggests
+// (e.g. user wants them in In-Depth Analysis but Attio still shows "Met")
+const COLUMN_OVERRIDES = {
+  'e9854ff6-6128-44f1-ab44-83f2e9fcf33e': 'analysis', // Upciti - Series A
+  'cc2c5d68-b872-4f03-b82c-c1bbd6b7952d': 'analysis', // Sunrise Robotics - Series A
+};
 
 const ratingOptions = [1, 2, 3, 4, 6, 7, 8, 9, 10];
 
@@ -111,17 +121,19 @@ function completionColor(pct) {
 
 // Determine kanban column from deal data
 function getKanbanColumn(deal) {
+  // Check manual override first
+  if (COLUMN_OVERRIDES[deal.id]) return COLUMN_OVERRIDES[deal.id];
+
   const { satus, maxStatus5 } = deal;
+
   // In-depth analysis: determined by max_status_5
   if (maxStatus5 === 'In depth analysis' || maxStatus5 === 'LOI' || maxStatus5 === 'Memo started') {
-    // Only if NOT already past to committee/portfolio/declined
-    if (satus !== 'Committee' && satus !== 'Won / Portfolio' && satus !== 'Declined' && satus !== 'To decline') {
+    if (satus !== 'Committee' && satus !== 'Won / Portfolio') {
       return 'analysis';
     }
   }
   if (satus === 'Committee') return 'committee';
-  if (satus === 'Met') return 'met';
-  return 'dealflow';
+  return 'met'; // Default for active pipeline deals
 }
 
 // ─── Components ──────────────────────────────────────────────────────
@@ -490,11 +502,11 @@ export default function DealAnalysis({ meetingRatings, setMeetingRatings, showTo
   const [ownerFilter, setOwnerFilter] = useState('all');
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
-  // Filter to active deals (not declined/won) and assign kanban columns
+  // Show only active pipeline deals (Met, Committee) — the deals we're actively working on
   const activeDeals = useMemo(() => {
     if (!dealFlowData?.deals) return [];
     return dealFlowData.deals
-      .filter(d => d.isActive && d.satus !== 'Won / Portfolio' && d.satus !== 'Unqualified')
+      .filter(d => ACTIVE_SATUS.has(d.satus) || COLUMN_OVERRIDES[d.id])
       .filter(d => ownerFilter === 'all' || (d.ownerIds || []).includes(ownerFilter))
       .map(d => ({
         ...d,
