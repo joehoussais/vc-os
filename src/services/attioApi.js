@@ -202,8 +202,8 @@ function extractDealFields(entry) {
   const sourceWsId = sourceAttr?.[0]?.referenced_actor_id || sourceAttr?.[0]?.workspace_membership_id || null;
 
   return {
-    entry_id: entry.entry_id,
-    record_id: entry.parent_record?.record_id || null,
+    entry_id: entry.id?.entry_id || null,
+    record_id: entry.parent_record_id || null,
     satus: getVal('satus'),
     max_status_5: getVal('max_status_5'),
     source_type_8: getVal('source_type_8'),
