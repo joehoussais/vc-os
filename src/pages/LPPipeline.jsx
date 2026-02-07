@@ -622,14 +622,14 @@ export default function LPPipeline() {
                       </div>
                       <div className="w-28 text-right">
                         <span className={`text-[13px] font-semibold ${isEstimate ? 'text-[var(--text-tertiary)] italic' : 'text-[var(--text-primary)]'}`}>
-                          {amount > 0 ? formatCurrencyFull(amount, isEstimate ? 'EUR' : funnelData.currency) : '—'}
+                          {amount > 0 ? formatCurrencyFull(amount, funnelData.currency) : '—'}
                         </span>
                         {isEstimate && amount > 0 && (
                           <span className="block text-[9px] text-[var(--text-quaternary)]">est. from &gt;Commit</span>
                         )}
                       </div>
                       <div className="w-28 text-right text-[12px] text-[var(--rrw-red)] font-medium">
-                        {weighted > 0 ? formatCurrencyFull(weighted, isEstimate ? 'EUR' : funnelData.currency) : '—'}
+                        {weighted > 0 ? formatCurrencyFull(weighted, funnelData.currency) : '—'}
                       </div>
                     </div>
                   );
