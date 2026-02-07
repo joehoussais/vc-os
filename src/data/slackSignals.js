@@ -518,7 +518,7 @@ export const SLACK_SIGNALS = {
   'glimps': { dealflow: false, unqualified: false, proactive: true },
   'hyperplan': { dealflow: false, unqualified: false, proactive: true },
   'levity': { dealflow: false, unqualified: false, proactive: true },
-  'the mobile first company': { dealflow: false, unqualified: false, proactive: true },
+  'the mobile first company': { dealflow: true, unqualified: false, proactive: true },
   'kraaft': { dealflow: false, unqualified: false, proactive: true },
   'craft-ai': { dealflow: false, unqualified: false, proactive: true },
   'craft ai': { dealflow: false, unqualified: false, proactive: true },
@@ -549,6 +549,67 @@ export const SLACK_SIGNALS = {
   'vb tech': { dealflow: false, unqualified: false, proactive: true },
   'deepip': { dealflow: false, unqualified: false, proactive: true },
   'kili': { dealflow: false, unqualified: false, proactive: true },
+  // ─────────────────────────────────────────────────────────
+  // Human-posted dealflow (not bot-format, manually verified)
+  // ─────────────────────────────────────────────────────────
+  'brightheart': { dealflow: true, unqualified: false, proactive: false },
+  'amenitiz': { dealflow: true, unqualified: false, proactive: false },
+  'katana': { dealflow: true, unqualified: false, proactive: false },
+  'sunrise': { dealflow: true, unqualified: false, proactive: false },
+  'qobra': { dealflow: true, unqualified: false, proactive: false },
+  'd-orbit': { dealflow: true, unqualified: false, proactive: false },
+  'unseenlabs': { dealflow: true, unqualified: false, proactive: false },
+  'sateliot': { dealflow: true, unqualified: false, proactive: false },
+  'monta': { dealflow: true, unqualified: false, proactive: false },
+  'nabla': { dealflow: true, unqualified: false, proactive: false },
+  'fernride': { dealflow: true, unqualified: false, proactive: false },
+  'meero': { dealflow: true, unqualified: false, proactive: false },
+  'dryad networks': { dealflow: true, unqualified: false, proactive: false },
+  'dryad': { dealflow: true, unqualified: false, proactive: false },
+  'pangea aerospace': { dealflow: true, unqualified: false, proactive: false },
+  'pangea': { dealflow: true, unqualified: false, proactive: false },
+  'energy robotics': { dealflow: true, unqualified: false, proactive: false },
+  'dfns': { dealflow: true, unqualified: false, proactive: false },
+  'bforeai': { dealflow: true, unqualified: false, proactive: false },
+  'bfore.ai': { dealflow: true, unqualified: false, proactive: false },
+  'naboo': { dealflow: true, unqualified: false, proactive: false },
+  'formo': { dealflow: true, unqualified: false, proactive: false },
+  'morressier': { dealflow: true, unqualified: false, proactive: false },
+  'weroad': { dealflow: true, unqualified: false, proactive: false },
+  'adaptive': { dealflow: true, unqualified: false, proactive: false },
+  'sifflet': { dealflow: true, unqualified: false, proactive: false },
+  'blackshark.ai': { dealflow: true, unqualified: false, proactive: false },
+  'blackshark': { dealflow: true, unqualified: false, proactive: false },
+  'multiverse computing': { dealflow: true, unqualified: false, proactive: false },
+  'stoik': { dealflow: true, unqualified: false, proactive: false },
+  'habyt': { dealflow: true, unqualified: false, proactive: false },
+  'wecasa': { dealflow: true, unqualified: false, proactive: false },
+  'emma': { dealflow: true, unqualified: false, proactive: false },
+  'emma.ms': { dealflow: true, unqualified: false, proactive: false },
+  'klara': { dealflow: true, unqualified: false, proactive: false },
+  'pony': { dealflow: true, unqualified: false, proactive: false },
+  'circularise': { dealflow: true, unqualified: false, proactive: false },
+  'heyflow': { dealflow: true, unqualified: false, proactive: false },
+  'umiami': { dealflow: true, unqualified: false, proactive: false },
+  'bsport': { dealflow: true, unqualified: false, proactive: false },
+  'finn': { dealflow: true, unqualified: false, proactive: false },
+  'moments lab': { dealflow: true, unqualified: false, proactive: false },
+  'momentslab': { dealflow: true, unqualified: false, proactive: false },
+  'exoticca': { dealflow: true, unqualified: false, proactive: false },
+  'aive': { dealflow: true, unqualified: false, proactive: false },
+  'noice': { dealflow: true, unqualified: false, proactive: false },
+  'sparta': { dealflow: true, unqualified: false, proactive: false },
+  'sparta commodities': { dealflow: true, unqualified: false, proactive: false },
+  'enspired': { dealflow: true, unqualified: false, proactive: false },
+  'shakers': { dealflow: true, unqualified: false, proactive: false },
+  'manna': { dealflow: true, unqualified: false, proactive: false },
+  'manna drone': { dealflow: true, unqualified: false, proactive: false },
+  'infraspeak': { dealflow: true, unqualified: false, proactive: false },
+  'cambri': { dealflow: true, unqualified: false, proactive: false },
+  'radiomics': { dealflow: true, unqualified: false, proactive: false },
+  'deepc': { dealflow: true, unqualified: false, proactive: false },
+  'zefir': { dealflow: true, unqualified: false, proactive: false },
+  'retraced': { dealflow: true, unqualified: false, proactive: false },
 };
 
 
@@ -575,9 +636,11 @@ export function getSlackSignal(dealName) {
     if (clean && clean.length > 1) {
       // Try exact match first
       if (SLACK_SIGNALS[clean]) return SLACK_SIGNALS[clean];
-      // Try partial matches (both directions)
+      // Try partial matches (both directions, min 4 chars to avoid false positives)
       for (const key of Object.keys(SLACK_SIGNALS)) {
-        if (key.includes(clean) || clean.includes(key)) return SLACK_SIGNALS[key];
+        if (key.length >= 4 && clean.length >= 4) {
+          if (key.includes(clean) || clean.includes(key)) return SLACK_SIGNALS[key];
+        }
       }
     }
   }
