@@ -310,46 +310,57 @@ function setCachedQualifiedCount(count) {
 
 // Fetch deal record names + owners in bulk
 // Returns Map<record_id, { name, ownerIds[] }>
+// Paginates through all deals_2 records and builds name map for requested IDs
 export async function fetchDealRecordNames(recordIds) {
   if (!recordIds.length) return new Map();
 
-  // Attio records/query with filter by record IDs — fetch in batches of 100
-  const BATCH = 100;
+  const wanted = new Set(recordIds);
   const nameMap = new Map();
+  const BATCH = 500;
 
-  const batches = [];
-  for (let i = 0; i < recordIds.length; i += BATCH) {
-    batches.push(recordIds.slice(i, i + BATCH));
-  }
+  // Fetch first page
+  const first = await attioQuery('/objects/deals_2/records/query', { limit: BATCH }).catch(() => ({ data: [] }));
+  processRecordBatch(first.data || [], wanted, nameMap);
 
-  const results = await Promise.all(
-    batches.map(batch =>
-      attioQuery('/objects/deals_2/records/query', {
-        filter: { record_id: { $in: batch } },
-        limit: BATCH,
-      }).catch(() => ({ data: [] }))
-    )
-  );
-
-  for (const res of results) {
-    for (const record of (res.data || [])) {
-      const id = record.id?.record_id;
-      if (!id) continue;
-      const vals = record.values || {};
-
-      // Extract deal_id (name)
-      const dealId = vals.deal_id?.[0]?.value || null;
-
-      // Extract owner IDs
-      const ownerIds = (vals.owner || [])
-        .map(o => o.referenced_actor_id || o.workspace_membership_id)
-        .filter(Boolean);
-
-      nameMap.set(id, { name: dealId, ownerIds });
+  // If there are more, fetch remaining pages in parallel
+  if ((first.data || []).length >= BATCH) {
+    const offsets = [];
+    for (let off = BATCH; off < 5000; off += BATCH) {
+      offsets.push(off);
+    }
+    const pages = await Promise.all(
+      offsets.map(offset =>
+        attioQuery('/objects/deals_2/records/query', { limit: BATCH, offset })
+          .then(res => res.data || [])
+          .catch(() => [])
+      )
+    );
+    for (const batch of pages) {
+      if (batch.length === 0) break;
+      processRecordBatch(batch, wanted, nameMap);
+      if (batch.length < BATCH) break;
     }
   }
 
   return nameMap;
+}
+
+function processRecordBatch(records, wanted, nameMap) {
+  for (const record of records) {
+    const id = record.id?.record_id;
+    if (!id || !wanted.has(id)) continue;
+    const vals = record.values || {};
+
+    // Extract deal_id (name)
+    const dealId = vals.deal_id?.[0]?.value || null;
+
+    // Extract owner IDs
+    const ownerIds = (vals.owner || [])
+      .map(o => o.referenced_actor_id || o.workspace_membership_id)
+      .filter(Boolean);
+
+    nameMap.set(id, { name: dealId, ownerIds });
+  }
 }
 
 // Update a single field on a coverage list entry (for toggling received/in_scope)
