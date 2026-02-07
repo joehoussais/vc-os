@@ -59,7 +59,7 @@ const ASSESSMENT_THEMES = [
   },
   {
     id: 'market',
-    label: 'Market',
+    label: 'Market & Competition',
     icon: '🌍',
     fields: [
       // ── Problem & Scope ──
@@ -87,15 +87,8 @@ const ASSESSMENT_THEMES = [
       { id: '_s_marketRisks', label: 'Market Risks', type: 'section' },
       { id: 'patternChangeRisk', label: 'Stress-tested "pattern change" risk (does product adapt?)', type: 'check' },
       { id: 'platformRisk', label: 'Platform dependency risk (AWS, Apple, regulation)', type: 'select', options: ['None', 'Low', 'Medium', 'High'] },
-      { id: 'marketRiskScore', label: 'Overall market risk score', type: 'rating' },
-    ],
-  },
-  {
-    id: 'competition',
-    label: 'Competition',
-    icon: '🏁',
-    fields: [
-      // ── Landscape ──
+
+      // ── Competitive Landscape ──
       { id: '_s_landscape', label: 'Competitive Landscape', type: 'section' },
       { id: 'competitorMapBuilt', label: 'Built competitor map (direct, adjacent, substitutes)', type: 'check' },
       { id: 'competitiveLandscape', label: 'Competitive density', type: 'select', options: ['Blue ocean', 'Few players', 'Crowded', 'Red ocean'] },
@@ -109,12 +102,12 @@ const ASSESSMENT_THEMES = [
       { id: 'dataMoat', label: 'Data moat / network effects', type: 'select', options: ['Strong', 'Moderate', 'Weak', 'None'] },
       { id: 'switchingCost', label: 'Customer switching cost', type: 'select', options: ['Very high', 'High', 'Medium', 'Low'] },
       { id: 'leadAsserted', label: 'Asserted lead (data, model, distribution) verified', type: 'check' },
-      { id: 'competitionScore', label: 'Overall competitive position', type: 'rating' },
+      { id: 'marketScore', label: 'Overall market & competition score', type: 'rating' },
     ],
   },
   {
     id: 'product',
-    label: 'Product',
+    label: 'Product & Technology',
     icon: '🛠️',
     fields: [
       // ── Workflow & UX ──
@@ -136,16 +129,9 @@ const ASSESSMENT_THEMES = [
       { id: 'currentFeatureSetValidated', label: 'Current feature set validated (customization, rules)', type: 'check' },
       { id: 'roadmapCredible', label: 'Roadmap is credible and funded', type: 'select', options: ['Strong', 'Reasonable', 'Ambitious', 'Unrealistic'] },
       { id: 'adjacentUseCases', label: 'Adjacent use cases validated (real roadmap vs vaporware)', type: 'check' },
-      { id: 'productScore', label: 'Overall product score', type: 'rating' },
-    ],
-  },
-  {
-    id: 'tech',
-    label: 'Technology & Data',
-    icon: '⚙️',
-    fields: [
-      // ── Model Performance ──
-      { id: '_s_model', label: 'Model / Core Tech Performance', type: 'section' },
+
+      // ── Core Tech Performance ──
+      { id: '_s_model', label: 'Core Tech Performance', type: 'section' },
       { id: 'detectionAccuracy', label: 'Detection / core accuracy validated and measured', type: 'check' },
       { id: 'performanceProgression', label: 'Historical performance progression documented', type: 'check' },
       { id: 'falsePositiveRate', label: 'False positive rate quantified and acceptable', type: 'check' },
@@ -169,12 +155,12 @@ const ASSESSMENT_THEMES = [
       { id: '_s_ip', label: 'IP & Protection', type: 'section' },
       { id: 'ipProtection', label: 'IP protection strategy', type: 'select', options: ['Patents filed', 'Trade secret', 'Open source core', 'None'] },
       { id: 'ipOwnershipClear', label: 'IP ownership clear (code, models, data, contractor assignments)', type: 'check' },
-      { id: 'techScore', label: 'Overall technology score', type: 'rating' },
+      { id: 'productTechScore', label: 'Overall product & tech score', type: 'rating' },
     ],
   },
   {
     id: 'traction',
-    label: 'Traction & Customers',
+    label: 'Traction, GTM & Financials',
     icon: '📊',
     fields: [
       // ── Customer Reality ──
@@ -196,65 +182,51 @@ const ASSESSMENT_THEMES = [
       { id: '_s_usage', label: 'Usage & Product Stickiness', type: 'section' },
       { id: 'usageKPIs', label: 'Usage KPIs correlate with retention / ROI', type: 'check' },
       { id: 'appExperience', label: 'App / UX experience is not a churn bottleneck', type: 'check' },
-      { id: 'tractionScore', label: 'Overall traction score', type: 'rating' },
-    ],
-  },
-  {
-    id: 'gtm',
-    label: 'Go-to-Market',
-    icon: '🚀',
-    fields: [
-      // ── Funnel & Efficiency ──
-      { id: '_s_funnel', label: 'Funnel & Efficiency', type: 'section' },
+
+      // ── GTM: Funnel & Efficiency ──
+      { id: '_s_funnel', label: 'GTM: Funnel & Efficiency', type: 'section' },
       { id: 'leadVolumeValidated', label: 'Inbound lead volume and conversion rates validated by geo', type: 'check' },
       { id: 'cacPayback', label: 'CAC payback period', type: 'select', options: ['<6 months', '6-12 months', '12-18 months', '18-24 months', '>24 months'] },
       { id: 'salesQuotas', label: 'Sales quotas: historical attainment reviewed', type: 'check' },
       { id: 'channelMix', label: 'Channel mix (inbound vs outbound vs partners)', type: 'select', options: ['Mostly inbound', 'Balanced', 'Mostly outbound', 'Partner-led'] },
 
-      // ── Pricing ──
-      { id: '_s_pricing', label: 'Pricing & Packaging', type: 'section' },
+      // ── GTM: Pricing ──
+      { id: '_s_pricing', label: 'GTM: Pricing & Packaging', type: 'section' },
       { id: 'pricingStructureReviewed', label: 'Current pricing structure reviewed (subscription + setup)', type: 'check' },
       { id: 'setupFeeEconomics', label: 'Setup fee economics validated (true cost, sustainability)', type: 'check' },
       { id: 'pricingPower', label: 'Pricing power', type: 'select', options: ['Strong', 'Moderate', 'Weak', 'Race to bottom'] },
 
-      // ── Expansion ──
-      { id: '_s_expansion', label: 'US / International Expansion', type: 'section' },
+      // ── GTM: Expansion ──
+      { id: '_s_expansion', label: 'GTM: US / International Expansion', type: 'section' },
       { id: 'usPlanValidated', label: 'US plan validated: headcount ramp, ARR targets, channels', type: 'check' },
       { id: 'usOperationalReadiness', label: 'US operational readiness (entity, bank, hiring, compliance)', type: 'check' },
       { id: 'marketMixUS', label: 'US market segment mix (SMB vs mid-market vs enterprise)', type: 'select', options: ['Enterprise-focused', 'Mid-market', 'SMB', 'Mixed'] },
-      { id: 'gtmScore', label: 'Overall GTM score', type: 'rating' },
-    ],
-  },
-  {
-    id: 'financials',
-    label: 'Financials & Unit Economics',
-    icon: '💰',
-    fields: [
-      // ── Current Performance ──
-      { id: '_s_current', label: 'Current Performance', type: 'section' },
+
+      // ── Financials: Current Performance ──
+      { id: '_s_current', label: 'Financials: Current Performance', type: 'section' },
       { id: 'revenueStage', label: 'Revenue stage', type: 'select', options: ['Pre-revenue', '< €1M ARR', '€1M – €5M', '€5M – €20M', '> €20M'] },
       { id: 'arrReconciled', label: 'ARR, gross margin, contribution margin reconciled', type: 'check' },
       { id: 'grossMarginTrajectory', label: 'Gross margin trajectory validated', type: 'check' },
       { id: 'growthRate', label: 'YoY growth', type: 'select', options: ['< 50%', '50% – 100%', '100% – 200%', '> 200%'] },
 
-      // ── Burn & Runway ──
-      { id: '_s_burn', label: 'Burn & Runway', type: 'section' },
+      // ── Financials: Burn & Runway ──
+      { id: '_s_burn', label: 'Financials: Burn & Runway', type: 'section' },
       { id: 'burnForecasts', label: 'Cumulative burn forecasts & break-even timing validated', type: 'check' },
       { id: 'headcountPlan', label: 'Headcount plan reviewed vs productivity assumptions', type: 'check' },
       { id: 'runway', label: 'Current runway (with this round)', type: 'select', options: ['24+ months', '18-24 mo', '12-18 mo', '<12 mo'] },
 
-      // ── Unit Economics ──
-      { id: '_s_unitEcon', label: 'Unit Economics', type: 'section' },
+      // ── Financials: Unit Economics ──
+      { id: '_s_unitEcon', label: 'Financials: Unit Economics', type: 'section' },
       { id: 'unitEconomics', label: 'Unit economics', type: 'select', options: ['Proven & strong', 'Proven & ok', 'Promising', 'Unclear', 'Negative'] },
       { id: 'ltv2cac', label: 'LTV / CAC ratio', type: 'select', options: ['>5x', '3-5x', '2-3x', '1-2x', '<1x'] },
       { id: 'cacLtvComputed', label: 'CAC, LTV, payback computed from raw inputs', type: 'check' },
       { id: 'churnVsCSMSpend', label: 'Churn vs CSM spend: confirmed support spend reduces churn', type: 'check' },
 
-      // ── Plan Realism ──
-      { id: '_s_plan', label: 'Plan Realism', type: 'section' },
+      // ── Financials: Plan Realism ──
+      { id: '_s_plan', label: 'Financials: Plan Realism', type: 'section' },
       { id: 'planStressTested', label: 'Growth plan stress-tested (net adds/month, pricing, churn, sales capacity)', type: 'check' },
       { id: 'fundraisingClean', label: 'Clean fundraising process?', type: 'select', options: ['Yes', 'Mostly', 'No'] },
-      { id: 'financialsScore', label: 'Overall financials score', type: 'rating' },
+      { id: 'tractionScore', label: 'Overall traction, GTM & financials score', type: 'rating' },
     ],
   },
   {
