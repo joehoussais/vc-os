@@ -69,6 +69,16 @@ export const LP_TEAM_MEMBERS = [
 export const LP_TEAM_MAP = {};
 LP_TEAM_MEMBERS.forEach(m => { LP_TEAM_MAP[m.id] = m.name; });
 
+// Fund III (RRW3) amount overrides — target ticket sizes not yet in Attio's amount_rrw field
+// These are in USD. Remove entries once the real values are entered in Attio.
+const FUND3_AMOUNT_OVERRIDES = {
+  'e0b26dbb-50c9-4cfe-8be2-711f603f6d72': 5_000_000,   // Oman
+  '05e89b3b-e730-4cd1-b0f8-90432c640547': 15_000_000,  // BNP Développement
+  '8a0c4f2a-b934-4be9-89cc-06b7544b1bf2': 10_000_000,  // ARTEMIS
+  '739bf486-bc96-409c-8872-97753d754382': 50_000_000,   // BPIFRANCE
+  'a211011f-5e79-42bb-bb44-3f8eab81af82': 50_000_000,   // EIF
+};
+
 function getCachedLPs() {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY);
@@ -182,10 +192,10 @@ export function useAttioLPs() {
         commitStatus,
         commitAmount,
         commitPriority,
-        // Fund III
+        // Fund III — use override if available, then Attio amount_rrw, then fall back to >Commit
         fund3Status,
-        fund3Amount: fund3Amount || commitAmount || null, // Fall back to >Commit amount for ticket size estimate
-        fund3AmountIsEstimate: !fund3Amount && !!commitAmount, // Flag when using >Commit amount as proxy
+        fund3Amount: FUND3_AMOUNT_OVERRIDES[recordId] || fund3Amount || commitAmount || null,
+        fund3AmountIsEstimate: !FUND3_AMOUNT_OVERRIDES[recordId] && !fund3Amount && !!commitAmount,
         fund3Priority,
         fund3Interest,
         // Fund II (derived)
