@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, LineController, BarElement, BarController, ArcElement, Filler, Title, Tooltip, Legend } from 'chart.js';
-import { Bar, Pie } from 'react-chartjs-2';
+import { Line, Bar, Pie } from 'react-chartjs-2';
 import { chartColors } from '../data/attioData';
 import { useAttioCoverage } from '../hooks/useAttioCoverage';
 import { updateListEntry } from '../services/attioApi';
@@ -28,16 +28,20 @@ function formatMonth(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
+// Coverage = we actually engaged: Invested, Analysed & Passed, Analysed & Lost
+const COVERED_OUTCOMES = new Set(['Invested', 'Analysed & Passed', 'Analysed & Lost']);
+function isCovered(deal) { return COVERED_OUTCOMES.has(deal.outcome); }
+
 function calculateCoverageByRegion(deals) {
   const regions = ['France', 'Germany', 'Nordics', 'Southern Europe', 'Eastern Europe', 'Other'];
   const result = {};
   for (const region of regions) {
     const regionDeals = deals.filter(d => d.filterRegion === region);
-    const seen = regionDeals.filter(d => d.seen);
+    const covered = regionDeals.filter(isCovered);
     result[region] = {
       total: regionDeals.length,
-      seen: seen.length,
-      coverage: regionDeals.length > 0 ? Math.round((seen.length / regionDeals.length) * 100) : 0,
+      covered: covered.length,
+      coverage: regionDeals.length > 0 ? Math.round((covered.length / regionDeals.length) * 100) : 0,
     };
   }
   return result;
@@ -211,8 +215,8 @@ export default function Sourcing() {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return false;
-      if (filters.show === 'seen' && !d.seen) return false;
-      if (filters.show === 'missed' && d.seen) return false;
+      if (filters.show === 'covered' && !isCovered(d)) return false;
+      if (filters.show === 'not_covered' && isCovered(d)) return false;
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
     }).sort((a, b) => new Date(b.announcedDate || 0) - new Date(a.announcedDate || 0));
@@ -228,9 +232,9 @@ export default function Sourcing() {
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
     });
-    const seenCount = filtered.filter(d => d.seen).length;
-    const coverage = filtered.length > 0 ? Math.round((seenCount / filtered.length) * 100) : 0;
-    return { total: filtered.length, seen: seenCount, coverage };
+    const coveredCount = filtered.filter(isCovered).length;
+    const coverage = filtered.length > 0 ? Math.round((coveredCount / filtered.length) * 100) : 0;
+    return { total: filtered.length, covered: coveredCount, coverage };
   }, [deals, filters, effectiveFrom, effectiveTo]);
 
   const coverageByRegion = useMemo(() => calculateCoverageByRegion(deals), [deals]);
@@ -245,7 +249,7 @@ export default function Sourcing() {
     return { stageData, outcomeData };
   }, [deals]);
 
-  // Quarterly chart data — simple bars (count) + line (coverage %)
+  // Quarterly chart data — line only (coverage %) with rich tooltip breakdown
   const quarterlyChartData = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
@@ -257,16 +261,21 @@ export default function Sourcing() {
     deals.forEach(d => {
       if (!d.date) return;
       if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return;
-      if (!byQuarter[d.date]) byQuarter[d.date] = { total: 0, seen: 0 };
+      if (!byQuarter[d.date]) byQuarter[d.date] = { total: 0, covered: 0, invested: 0, analysed: 0, tried: 0, saw: 0, missed: 0 };
       byQuarter[d.date].total++;
-      if (d.seen) byQuarter[d.date].seen++;
+      if (d.outcome === 'Invested') { byQuarter[d.date].covered++; byQuarter[d.date].invested++; }
+      else if (d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost') { byQuarter[d.date].covered++; byQuarter[d.date].analysed++; }
+      else if (d.outcome === 'Tried, No Response') byQuarter[d.date].tried++;
+      else if (d.outcome === "Saw, Didn't Try") byQuarter[d.date].saw++;
+      else byQuarter[d.date].missed++;
     });
     const labels = displayQuarters;
-    const counts = displayQuarters.map(q => byQuarter[q]?.total || 0);
     const coverage = displayQuarters.map(q =>
-      byQuarter[q]?.total > 0 ? Math.round((byQuarter[q].seen / byQuarter[q].total) * 100) : null
+      byQuarter[q]?.total > 0 ? Math.round((byQuarter[q].covered / byQuarter[q].total) * 100) : null
     );
-    return { labels, counts, coverage };
+    // Store raw data for tooltips
+    const raw = displayQuarters.map(q => byQuarter[q] || { total: 0, covered: 0, invested: 0, analysed: 0, tried: 0, saw: 0, missed: 0 });
+    return { labels, coverage, raw };
   }, [deals, effectiveFrom, effectiveTo, allQuarters, filters.owner]);
 
   // ─── Shadow Portfolio — ONLY deals we saw, analysed, and passed on ──
@@ -296,16 +305,16 @@ export default function Sourcing() {
     const total = deals.length;
     if (total === 0) return null;
 
-    const seen = deals.filter(d => d.seen).length;
-    const analysed = deals.filter(d => d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost').length;
-    const missed = deals.filter(d => d.outcome === 'Completely Missed').length;
     const invested = deals.filter(d => d.outcome === 'Invested').length;
+    const analysedPassed = deals.filter(d => d.outcome === 'Analysed & Passed').length;
     const analysedLost = deals.filter(d => d.outcome === 'Analysed & Lost').length;
+    const covered = invested + analysedPassed + analysedLost;  // = isCovered
     const tried = deals.filter(d => d.outcome === 'Tried, No Response').length;
+    const saw = deals.filter(d => d.outcome === "Saw, Didn't Try").length;
+    const missed = deals.filter(d => d.outcome === 'Completely Missed').length;
 
-    const seenToAnalysed = seen > 0 ? Math.round((analysed + analysedLost + invested) / seen * 100) : 0;
-    const analysedToInvested = (analysed + analysedLost + invested) > 0 ? Math.round(invested / (analysed + analysedLost + invested) * 100) : 0;
-    const passRate = seen > 0 ? Math.round(analysed / seen * 100) : 0;
+    const coveragePct = total > 0 ? Math.round(covered / total * 100) : 0;
+    const coveredToInvested = covered > 0 ? Math.round(invested / covered * 100) : 0;
 
     const highConvictionMisses = deals.filter(d => (d.outcome === 'Analysed & Passed' || d.outcome === 'Completely Missed') && d.rating >= 6);
 
@@ -333,8 +342,8 @@ export default function Sourcing() {
     const judgmentAccuracy = highRatedTotal > 0 ? Math.round(highRatedGoodOutcome / highRatedTotal * 100) : null;
 
     return {
-      total, seen, analysed, missed, invested, analysedLost, tried,
-      seenToAnalysed, analysedToInvested, passRate,
+      total, covered, coveragePct, missed, invested, analysedPassed, analysedLost, tried, saw,
+      coveredToInvested,
       highConvictionMisses,
       passedByRegion, passedByStage,
       avgRatingByOutcome,
@@ -342,19 +351,45 @@ export default function Sourcing() {
     };
   }, [deals]);
 
-  const maxCount = Math.max(...(quarterlyChartData.counts || [0]), 5);
   const chartOptions = {
     responsive: true, maintainAspectRatio: false,
     layout: { padding: { left: 5, right: 5, top: 10 } },
     interaction: { mode: 'index', intersect: false },
     plugins: {
-      legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 20, boxHeight: 2, font: { size: 11 }, color: 'var(--text-tertiary)', usePointStyle: false, padding: 16 } },
-      tooltip: { callbacks: { label: (ctx) => ctx.dataset.yAxisID === 'y' ? `${ctx.dataset.label}: ${ctx.parsed.y}%` : `${ctx.dataset.label}: ${ctx.parsed.y}` } }
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff',
+        titleColor: theme === 'dark' ? '#e5e5e5' : '#1a1a1a',
+        bodyColor: theme === 'dark' ? '#a3a3a3' : '#525252',
+        borderColor: theme === 'dark' ? '#404040' : '#e5e5e5',
+        borderWidth: 1,
+        padding: 12,
+        displayColors: false,
+        callbacks: {
+          title: (items) => items[0]?.label || '',
+          label: () => null,
+          afterBody: (items) => {
+            const idx = items[0]?.dataIndex;
+            if (idx === undefined) return [];
+            const q = quarterlyChartData.raw[idx];
+            if (!q || q.total === 0) return ['No deals this quarter'];
+            const pct = Math.round((q.covered / q.total) * 100);
+            return [
+              `Coverage: ${pct}% (${q.covered}/${q.total})`,
+              '',
+              `  Invested: ${q.invested}`,
+              `  Analysed: ${q.analysed}`,
+              `  Tried: ${q.tried}`,
+              `  Saw: ${q.saw}`,
+              `  Missed: ${q.missed}`,
+            ];
+          },
+        },
+      },
     },
     scales: {
-      y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } },
-      y1: { type: 'linear', position: 'right', min: 0, suggestedMax: Math.ceil(maxCount * 1.3), ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { drawOnChartArea: false } },
-      x: { ticks: { color: 'var(--text-tertiary)', maxRotation: 45, maxTicksLimit: 18 }, grid: { color: 'var(--border-subtle)' } }
+      y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { callback: v => v + '%', color: 'var(--text-tertiary)', font: { size: 11 } }, grid: { color: 'var(--border-subtle)' } },
+      x: { ticks: { color: 'var(--text-tertiary)', maxRotation: 45, maxTicksLimit: 18, font: { size: 11 } }, grid: { color: 'var(--border-subtle)' } }
     }
   };
 
@@ -407,9 +442,9 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
           <FilterSelect label="Stage" value={filters.stage} onChange={(v) => setFilters({ ...filters, stage: v })} options={[{ value: 'all', label: 'All Stages' }, { value: 'Pre-Seed', label: 'Pre-Seed' }, { value: 'Seed', label: 'Seed' }, { value: 'Series A', label: 'Series A' }, { value: 'Series B', label: 'Series B' }, { value: 'Series C', label: 'Series C' }, { value: 'Venture', label: 'Venture' }]} />
           <FilterSelect label="From" value={effectiveFrom} onChange={(v) => setFilters({ ...filters, from: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
           <FilterSelect label="To" value={effectiveTo} onChange={(v) => setFilters({ ...filters, to: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
-          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Companies' }, { value: 'seen', label: 'Covered (not missed)' }, { value: 'missed', label: 'Completely Missed' }]} />
+          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Companies' }, { value: 'covered', label: 'Covered (analysed)' }, { value: 'not_covered', label: 'Not Covered' }]} />
           <div className="ml-auto flex items-center gap-4 text-[13px]">
-            <span className="text-[var(--text-tertiary)]">{stats.total} companies · {stats.seen} covered</span>
+            <span className="text-[var(--text-tertiary)]">{stats.total} companies · {stats.covered} covered</span>
             <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">{stats.coverage}% coverage</span>
           </div>
         </div>
@@ -418,13 +453,12 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
-            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">Quarterly companies tracked · coverage %</p></div>
+            <div><h3 className="font-semibold text-[var(--text-primary)]">Coverage Rate</h3><p className="text-xs text-[var(--text-tertiary)]">% of deals we analysed per quarter</p></div>
             <div className="text-right"><span className="text-3xl font-bold text-[var(--rrw-red)]">{stats.coverage}%</span><span className="text-xs text-[var(--text-tertiary)] block">Overall</span></div>
           </div>
           <div className="h-72">
-            <Bar data={{ labels: quarterlyChartData.labels, datasets: [
-              { type: 'bar', label: 'Deals', data: quarterlyChartData.counts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', hoverBackgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)', borderRadius: 6, barPercentage: 0.7, yAxisID: 'y1', order: 2 },
-              { type: 'line', label: 'Coverage %', data: quarterlyChartData.coverage, borderColor: chartColors.rrwRed, backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0.25, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: chartColors.rrwRed, pointBorderColor: theme === 'dark' ? '#1a1a1a' : '#fff', pointBorderWidth: 1.5, spanGaps: false, yAxisID: 'y', order: 0, clip: false },
+            <Line data={{ labels: quarterlyChartData.labels, datasets: [
+              { label: 'Coverage %', data: quarterlyChartData.coverage, borderColor: chartColors.rrwRed, backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0.3, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: chartColors.rrwRed, pointBorderColor: theme === 'dark' ? '#1a1a1a' : '#fff', pointBorderWidth: 2, spanGaps: false, clip: false, borderWidth: 2.5 },
             ]}} options={chartOptions} />
           </div>
         </div>
@@ -744,12 +778,12 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
-        <StatCard label="Total Deals" value={scorecard.total} sub="All tracked" />
-        <StatCard label="Coverage" value={Math.round(scorecard.seen / scorecard.total * 100) + '%'} sub={`${scorecard.seen} of ${scorecard.total}`} />
-        <StatCard label="Pass Rate" value={scorecard.passRate + '%'} sub={`${scorecard.analysed} of ${scorecard.seen} seen`} />
-        <StatCard label="Invested" value={scorecard.invested} sub={scorecard.seen > 0 ? Math.round(scorecard.invested / scorecard.seen * 100) + '% of seen' : ''} color="text-emerald-500" />
-        <StatCard label="Seen → Analysed" value={scorecard.seenToAnalysed + '%'} sub="Conversion" />
-        {scorecard.judgmentAccuracy !== null && <StatCard label="Rating Accuracy" value={scorecard.judgmentAccuracy + '%'} sub="Rated 6+ that reached DD/IC/Invest" color={scorecard.judgmentAccuracy >= 50 ? 'text-emerald-500' : 'text-amber-500'} />}
+        <StatCard label="Total Deals" value={scorecard.total} sub="In-scope universe" />
+        <StatCard label="Coverage" value={scorecard.coveragePct + '%'} sub={`${scorecard.covered} of ${scorecard.total} analysed`} />
+        <StatCard label="Invested" value={scorecard.invested} sub={scorecard.covered > 0 ? Math.round(scorecard.invested / scorecard.covered * 100) + '% of covered' : ''} color="text-emerald-500" />
+        <StatCard label="Covered → Invested" value={scorecard.coveredToInvested + '%'} sub="Conversion" />
+        <StatCard label="Completely Missed" value={scorecard.missed} sub={scorecard.total > 0 ? Math.round(scorecard.missed / scorecard.total * 100) + '% of total' : ''} color="text-red-500" />
+        {scorecard.judgmentAccuracy !== null && <StatCard label="Rating Accuracy" value={scorecard.judgmentAccuracy + '%'} sub="Rated 6+ that reached IC/Invest" color={scorecard.judgmentAccuracy >= 50 ? 'text-emerald-500' : 'text-amber-500'} />}
       </div>
 
       {/* 4-Quadrant Grid */}
@@ -784,10 +818,10 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
         <h3 className="font-semibold text-[var(--text-primary)] mb-4">Decision Funnel</h3>
         <div className="flex items-center justify-between gap-2">
-          <FunnelStep label="Seen" value={scorecard.seen} />
-          <FunnelArrow pct={scorecard.seenToAnalysed} />
-          <FunnelStep label="Analysed" value={scorecard.analysed + scorecard.analysedLost + scorecard.invested} />
-          <FunnelArrow pct={scorecard.analysedToInvested} />
+          <FunnelStep label="Universe" value={scorecard.total} />
+          <FunnelArrow pct={scorecard.coveragePct} />
+          <FunnelStep label="Covered" value={scorecard.covered} />
+          <FunnelArrow pct={scorecard.coveredToInvested} />
           <FunnelStep label="Invested" value={scorecard.invested} highlight />
         </div>
       </div>
@@ -981,7 +1015,7 @@ function CoverageCard({ region, data }) {
     <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
       <div className="text-[11px] text-[var(--text-tertiary)] mb-1">{region}</div>
       <div className={`text-xl font-bold ${coverageColor}`}>{data.coverage}%</div>
-      <div className="text-[11px] text-[var(--text-quaternary)]">{data.seen}/{data.total} seen</div>
+      <div className="text-[11px] text-[var(--text-quaternary)]">{data.covered}/{data.total} covered</div>
     </div>
   );
 }
