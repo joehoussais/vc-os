@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   fetchDealFlowEntries,
   fetchProactiveSourcingCount,
-  getEntryValue,
   getCachedDealFunnel,
   setCachedDealFunnel,
 } from '../services/attioApi';
@@ -99,15 +98,6 @@ function getCurrentStage(satus) {
   return SATUS_TO_STAGE[satus] || 'dealflow';
 }
 
-// Extract source actor name from entry
-function getSourceName(entry) {
-  const sourceAttr = entry?.entry_values?.source;
-  if (!sourceAttr || !sourceAttr.length) return null;
-  const wsId = sourceAttr[0]?.referenced_actor_id || sourceAttr[0]?.workspace_membership_id;
-  if (!wsId) return null;
-  return TEAM_MAP[wsId] || 'Unknown';
-}
-
 // Parse created_at to extract year
 function parseCreatedYear(createdAt) {
   if (!createdAt) return null;
@@ -123,33 +113,29 @@ export function useAttioCompanies() {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(!!cached);
 
+  // Process entries from the server-side /api/deal-funnel endpoint
+  // Each entry is already a flat object: { entry_id, record_id, satus, max_status_5, source_type_8, amount_in_meu, founding_team, created_at, source_ws_id }
   const processEntries = useCallback((entries, qualifiedCount) => {
     const deals = entries.map(entry => {
-      const entryId = entry.entry_id;
-      const dealRecordId = entry.parent_record?.record_id;
-
-      // Extract entry-level fields
-      const satus = getEntryValue(entry, 'satus');
-      const maxStatus5 = getEntryValue(entry, 'max_status_5');
-      const sourceType = getEntryValue(entry, 'source_type_8');
-      const amountInMeu = getEntryValue(entry, 'amount_in_meu');
-      const foundingTeam = getEntryValue(entry, 'founding_team');
-      const createdAt = getEntryValue(entry, 'created_at');
-      const sourceName = getSourceName(entry);
+      const satus = entry.satus;
+      const maxStatus5 = entry.max_status_5;
+      const sourceType = entry.source_type_8;
+      const amountRaw = entry.amount_in_meu;
+      const sourceName = entry.source_ws_id ? (TEAM_MAP[entry.source_ws_id] || 'Unknown') : null;
 
       // Determine funnel stages
       const highestStage = getHighestStage(satus, maxStatus5);
       const currentStage = getCurrentStage(satus);
       const isDeclined = satus === 'Declined' || satus === 'To decline';
       const isActive = !isDeclined;
-      const createdYear = parseCreatedYear(createdAt);
+      const createdYear = parseCreatedYear(entry.created_at);
 
       // Source channel (use raw source_type_8 value as ID, fallback to 'unknown')
       const source = sourceType || 'unknown';
 
       return {
-        id: entryId,
-        dealRecordId,
+        id: entry.entry_id,
+        dealRecordId: entry.record_id,
         satus,
         maxStatus5,
         highestStage,
@@ -159,9 +145,9 @@ export function useAttioCompanies() {
         source,
         sourceType,
         sourceName,
-        amountInMeu: amountInMeu ? parseFloat(amountInMeu) : null,
-        foundingTeam,
-        createdAt,
+        amountInMeu: amountRaw != null ? parseFloat(amountRaw) : null,
+        foundingTeam: entry.founding_team,
+        createdAt: entry.created_at,
         createdYear,
       };
     });

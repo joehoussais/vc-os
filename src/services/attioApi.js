@@ -185,95 +185,49 @@ export async function fetchListEntries() {
   return allEntries;
 }
 
-// Fetch all entries from the Deal Flow list (deal_flow_4)
-// Strips heavy fields (email_content) to reduce payload size and cache footprint
+// Fetch deal flow entries via dedicated serverless function
+// The server paginates through Attio, strips heavy fields (email_content etc.),
+// and returns only the lightweight fields we need — ~50x smaller payload
 export async function fetchDealFlowEntries() {
-  const BATCH = 500;
-  let allEntries = [];
-  let offset = 0;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const payload = { limit: BATCH };
-    if (offset > 0) payload.offset = offset;
-
-    const data = await attioQuery('/lists/deal_flow_4/entries/query', payload);
-    const batch = data.data || [];
-
-    // Strip email_content immediately — it's massive (full forwarded emails) and never used
-    for (const entry of batch) {
-      if (entry.entry_values?.email_content) {
-        delete entry.entry_values.email_content;
-      }
-      if (entry.entry_values?.reasons_for_rejecting) {
-        delete entry.entry_values.reasons_for_rejecting;
-      }
-      if (entry.entry_values?.reasons_for_declining_5) {
-        delete entry.entry_values.reasons_for_declining_5;
-      }
-    }
-
-    allEntries = allEntries.concat(batch);
-
-    if (batch.length < BATCH) break;
-    offset += BATCH;
+  const res = await fetch('/api/deal-funnel');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Deal funnel API error: ${res.status}`);
   }
-
-  return allEntries;
+  const data = await res.json();
+  return data.deals || [];
 }
 
-// Qualified count cache (localStorage, 1h TTL — this number barely changes)
+// Fetch qualified count via dedicated serverless function
+// The server paginates through 15,000+ Proactive Sourcing entries and returns just the count
+// CDN-cached for 1h server-side + localStorage cache client-side
 const QUALIFIED_CACHE_KEY = 'attio-qualified-count';
 const QUALIFIED_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
-function getCachedQualifiedCount() {
+export async function fetchProactiveSourcingCount() {
+  // Check localStorage first
   try {
     const raw = localStorage.getItem(QUALIFIED_CACHE_KEY);
-    if (!raw) return null;
-    const { count, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp > QUALIFIED_CACHE_TTL) {
-      localStorage.removeItem(QUALIFIED_CACHE_KEY);
-      return null;
+    if (raw) {
+      const { count, timestamp } = JSON.parse(raw);
+      if (Date.now() - timestamp < QUALIFIED_CACHE_TTL) return count;
     }
-    return count;
-  } catch {
-    return null;
-  }
-}
+  } catch { /* ignore */ }
 
-function setCachedQualifiedCount(count) {
+  const res = await fetch('/api/qualified-count');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Qualified count API error: ${res.status}`);
+  }
+  const data = await res.json();
+  const count = data.count || 0;
+
+  // Cache in localStorage
   try {
     localStorage.setItem(QUALIFIED_CACHE_KEY, JSON.stringify({ count, timestamp: Date.now() }));
-  } catch {
-    // ignore
-  }
-}
+  } catch { /* ignore */ }
 
-// Fetch count of entries in the Proactive Sourcing list (old_2_6)
-// Uses localStorage cache (1h) since this count rarely changes
-export async function fetchProactiveSourcingCount() {
-  const cached = getCachedQualifiedCount();
-  if (cached != null) return cached;
-
-  const BATCH = 500;
-  let total = 0;
-  let offset = 0;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const payload = { limit: BATCH };
-    if (offset > 0) payload.offset = offset;
-
-    const result = await attioQuery('/lists/old_2_6/entries/query', payload);
-    const batch = result.data || [];
-    total += batch.length;
-
-    if (batch.length < BATCH) break;
-    offset += BATCH;
-  }
-
-  setCachedQualifiedCount(total);
-  return total;
+  return count;
 }
 
 // Update a single field on a coverage list entry (for toggling received/in_scope)
