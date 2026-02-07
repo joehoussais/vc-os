@@ -330,39 +330,69 @@ const KANBAN_STAGES = [
 
 const ACTIVE_SATUS = new Set(['Met', 'Committee']);
 
-// ─── Placeholder calls per company (matched by company name in deal.name) ───
-// Will be replaced by real Granola data later
+// ─── Required DD calls per theme ─────────────────────────────────────
+// These are mandatory calls that must happen for proper due diligence.
+// Each has an id (used for localStorage tracking), a label, and the theme it belongs to.
+const REQUIRED_CALLS = [
+  // Founders & Team
+  { id: 'rc_founder_intro', label: 'First founder call', theme: 'founder', type: 'Founder' },
+  { id: 'rc_founder_ref1', label: 'Founder reference #1 (ex-colleague)', theme: 'founder', type: 'Reference' },
+  { id: 'rc_founder_ref2', label: 'Founder reference #2 (investor/board)', theme: 'founder', type: 'Reference' },
+  { id: 'rc_founder_followup', label: 'Founder follow-up (deep character)', theme: 'founder', type: 'Founder' },
+  // Market & Competition
+  { id: 'rc_market_expert', label: 'Industry expert call', theme: 'market', type: 'Market' },
+  { id: 'rc_market_competitor', label: 'Competitor analysis call', theme: 'market', type: 'Market' },
+  // Product & Technology
+  { id: 'rc_product_demo', label: 'Full product demo', theme: 'product', type: 'Product' },
+  { id: 'rc_product_cto', label: 'CTO / tech deep-dive', theme: 'product', type: 'Product' },
+  { id: 'rc_product_data', label: 'Data & model review call', theme: 'product', type: 'Product' },
+  // Traction, GTM & Financials
+  { id: 'rc_traction_customer1', label: 'Customer reference #1 (happy)', theme: 'traction', type: 'Reference' },
+  { id: 'rc_traction_customer2', label: 'Customer reference #2 (neutral)', theme: 'traction', type: 'Reference' },
+  { id: 'rc_traction_churned', label: 'Churned customer call', theme: 'traction', type: 'Reference' },
+  { id: 'rc_traction_gtm_us', label: 'GTM deep-dive (US expansion)', theme: 'traction', type: 'GTM' },
+  { id: 'rc_traction_financials', label: 'CFO / financials walkthrough', theme: 'traction', type: 'Financials' },
+  // Deal & Valuation
+  { id: 'rc_deal_terms', label: 'Terms negotiation call', theme: 'deal', type: 'Deal' },
+  // Legal
+  { id: 'rc_legal_review', label: 'Legal DD call (counsel)', theme: 'legal', type: 'Legal' },
+];
+
+// ─── Placeholder completed calls per company ────────────────────────
+// Will be replaced by real Granola data later.
+// `requiredCallId` links a completed call to a required call if applicable.
 const PLACEHOLDER_CALLS = {
   'Upciti': [
-    { id: 'u1', title: 'First founder call — Christophe', date: 'Jan 15, 2026', attendees: ['Olivier', 'Christophe'], type: 'Founder' },
-    { id: 'u2', title: 'Product deep-dive w/ CTO', date: 'Jan 22, 2026', attendees: ['Joseph', 'Marc (CTO)'], type: 'Product' },
-    { id: 'u3', title: 'Market reference — city of Lyon', date: 'Jan 28, 2026', attendees: ['Olivier', 'Deputy Mayor'], type: 'Reference' },
-    { id: 'u4', title: 'Follow-up — unit economics review', date: 'Feb 04, 2026', attendees: ['Olivier', 'Christophe'], type: 'Financials' },
+    { id: 'u1', title: 'First founder call — Christophe', date: 'Jan 15, 2026', attendees: ['Olivier', 'Christophe'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'u2', title: 'Product deep-dive w/ CTO', date: 'Jan 22, 2026', attendees: ['Joseph', 'Marc (CTO)'], type: 'Product', requiredCallId: 'rc_product_cto' },
+    { id: 'u3', title: 'Market reference — city of Lyon', date: 'Jan 28, 2026', attendees: ['Olivier', 'Deputy Mayor'], type: 'Reference', requiredCallId: 'rc_market_expert' },
+    { id: 'u4', title: 'Follow-up — unit economics review', date: 'Feb 04, 2026', attendees: ['Olivier', 'Christophe'], type: 'Financials', requiredCallId: 'rc_traction_financials' },
+    { id: 'u5', title: 'Customer ref — municipality pilot', date: 'Feb 06, 2026', attendees: ['Joseph', 'City ops manager'], type: 'Reference', requiredCallId: 'rc_traction_customer1' },
   ],
   'Sunrise Robotics': [
-    { id: 'sr1', title: 'Intro call — CEO pitch', date: 'Jan 20, 2026', attendees: ['Joseph', 'CEO'], type: 'Founder' },
-    { id: 'sr2', title: 'Technical DD — robotics stack', date: 'Feb 01, 2026', attendees: ['Joseph', 'CTO'], type: 'Product' },
+    { id: 'sr1', title: 'Intro call — CEO pitch', date: 'Jan 20, 2026', attendees: ['Joseph', 'CEO'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'sr2', title: 'Technical DD — robotics stack', date: 'Feb 01, 2026', attendees: ['Joseph', 'CTO'], type: 'Product', requiredCallId: 'rc_product_cto' },
   ],
   'Quiet': [
-    { id: 'q1', title: 'First call — Anouar', date: 'Jan 18, 2026', attendees: ['Joseph', 'Anouar'], type: 'Founder' },
-    { id: 'q2', title: 'Customer reference — enterprise client', date: 'Jan 30, 2026', attendees: ['Joseph', 'VP Eng (client)'], type: 'Reference' },
-    { id: 'q3', title: 'Competitive landscape review', date: 'Feb 03, 2026', attendees: ['Anouar', 'Joseph'], type: 'Market' },
+    { id: 'q1', title: 'First call — Anouar', date: 'Jan 18, 2026', attendees: ['Joseph', 'Anouar'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'q2', title: 'Customer reference — enterprise client', date: 'Jan 30, 2026', attendees: ['Joseph', 'VP Eng (client)'], type: 'Reference', requiredCallId: 'rc_traction_customer1' },
+    { id: 'q3', title: 'Competitive landscape review', date: 'Feb 03, 2026', attendees: ['Anouar', 'Joseph'], type: 'Market', requiredCallId: 'rc_market_competitor' },
   ],
   'Cello': [
-    { id: 'c1', title: 'Intro call — Stefan (CEO)', date: 'Jan 25, 2026', attendees: ['Joseph', 'Stefan'], type: 'Founder' },
-    { id: 'c2', title: 'GTM deep-dive — Series A', date: 'Feb 03, 2026', attendees: ['Stefan', 'Joseph'], type: 'GTM' },
+    { id: 'c1', title: 'Intro call — Stefan (CEO)', date: 'Jan 25, 2026', attendees: ['Joseph', 'Stefan'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'c2', title: 'GTM deep-dive — Series A', date: 'Feb 03, 2026', attendees: ['Stefan', 'Joseph'], type: 'GTM', requiredCallId: 'rc_traction_gtm_us' },
   ],
   'Satlyt': [
-    { id: 's1', title: 'First meeting — Max Corbani', date: 'Jan 30, 2026', attendees: ['Max', 'Rama'], type: 'Founder' },
+    { id: 's1', title: 'First meeting — Max Corbani', date: 'Jan 30, 2026', attendees: ['Max', 'Rama'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
   ],
   'Staer': [
-    { id: 'st1', title: 'Intro — Jan Erik Solem', date: 'Jan 14, 2026', attendees: ['Joseph', 'Jan Erik'], type: 'Founder' },
-    { id: 'st2', title: 'Technical deep-dive — computer vision', date: 'Jan 22, 2026', attendees: ['Joseph', 'CTO'], type: 'Product' },
-    { id: 'st3', title: 'Customer call — logistics partner', date: 'Jan 30, 2026', attendees: ['Jan Erik', 'Abel'], type: 'Reference' },
+    { id: 'st1', title: 'Intro — Jan Erik Solem', date: 'Jan 14, 2026', attendees: ['Joseph', 'Jan Erik'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'st2', title: 'Technical deep-dive — computer vision', date: 'Jan 22, 2026', attendees: ['Joseph', 'CTO'], type: 'Product', requiredCallId: 'rc_product_cto' },
+    { id: 'st3', title: 'Customer call — logistics partner', date: 'Jan 30, 2026', attendees: ['Jan Erik', 'Abel'], type: 'Reference', requiredCallId: 'rc_traction_customer1' },
   ],
   'RMG': [
-    { id: 'r1', title: 'Intro call — Rick Gittleman', date: 'Jan 28, 2026', attendees: ['Olivier', 'Rick'], type: 'Founder' },
-    { id: 'r2', title: 'Market sizing — minerals supply chain', date: 'Feb 03, 2026', attendees: ['Rick', 'Olivier'], type: 'Market' },
+    { id: 'r1', title: 'Intro call — Rick Gittleman', date: 'Jan 28, 2026', attendees: ['Olivier', 'Rick'], type: 'Founder', requiredCallId: 'rc_founder_intro' },
+    { id: 'r2', title: 'Market sizing — minerals supply chain', date: 'Feb 03, 2026', attendees: ['Rick', 'Olivier'], type: 'Market', requiredCallId: 'rc_market_expert' },
   ],
 };
 
@@ -732,16 +762,19 @@ function ScoreBadge({ score, label }) {
   );
 }
 
+const CALL_TYPE_COLORS = {
+  Founder: { bg: 'rgba(139, 92, 246, 0.1)', fg: '#8B5CF6' },
+  Product: { bg: 'rgba(59, 130, 246, 0.1)', fg: '#3B82F6' },
+  Reference: { bg: 'rgba(16, 185, 129, 0.1)', fg: '#10B981' },
+  Market: { bg: 'rgba(245, 158, 11, 0.1)', fg: '#F59E0B' },
+  Financials: { bg: 'rgba(239, 68, 68, 0.1)', fg: '#EF4444' },
+  GTM: { bg: 'rgba(236, 72, 153, 0.1)', fg: '#EC4899' },
+  Deal: { bg: 'rgba(99, 102, 241, 0.1)', fg: '#6366F1' },
+  Legal: { bg: 'rgba(107, 114, 128, 0.1)', fg: '#6B7280' },
+};
+
 function CallTypeTag({ type }) {
-  const colors = {
-    Founder: { bg: 'rgba(139, 92, 246, 0.1)', fg: '#8B5CF6' },
-    Product: { bg: 'rgba(59, 130, 246, 0.1)', fg: '#3B82F6' },
-    Reference: { bg: 'rgba(16, 185, 129, 0.1)', fg: '#10B981' },
-    Market: { bg: 'rgba(245, 158, 11, 0.1)', fg: '#F59E0B' },
-    Financials: { bg: 'rgba(239, 68, 68, 0.1)', fg: '#EF4444' },
-    GTM: { bg: 'rgba(236, 72, 153, 0.1)', fg: '#EC4899' },
-  };
-  const c = colors[type] || { bg: 'var(--bg-tertiary)', fg: 'var(--text-tertiary)' };
+  const c = CALL_TYPE_COLORS[type] || { bg: 'var(--bg-tertiary)', fg: 'var(--text-tertiary)' };
   return (
     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide" style={{ backgroundColor: c.bg, color: c.fg }}>{type}</span>
   );
@@ -893,84 +926,162 @@ function AssessmentModal({ deal, assessment, onUpdate, onClose, columnOverrides,
         </div>
 
         {/* ─── Right panel: calls timeline ─── */}
-        <div className="w-[260px] flex-shrink-0 bg-[var(--bg-secondary)] border-l border-[var(--border-default)] flex flex-col">
-          {/* Calls header */}
-          <div className="px-4 py-3.5 border-b border-[var(--border-default)]">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-quaternary)]">
-                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                </svg>
-                <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">Calls</h3>
-              </div>
-              <span className="text-[10px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded-md">{dealCalls.length}</span>
-            </div>
-            {avgCallRating != null && (
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <span className="text-[10px] text-[var(--text-quaternary)]">Avg rating</span>
-                <span className="text-[12px] font-bold" style={{ color: avgCallRating >= 7 ? '#10B981' : avgCallRating >= 4 ? '#F59E0B' : '#EF4444' }}>{avgCallRating}/10</span>
-              </div>
-            )}
-          </div>
+        {(() => {
+          // Required calls for the active theme
+          const themeRequired = REQUIRED_CALLS.filter(rc => rc.theme === activeTheme);
+          // Which required calls are fulfilled by completed calls
+          const fulfilledIds = new Set(dealCalls.map(c => c.requiredCallId).filter(Boolean));
+          // Completed calls for this theme (matched by requiredCallId theme, or by type match)
+          const themeCalls = dealCalls.filter(c => {
+            if (c.requiredCallId) {
+              const rc = REQUIRED_CALLS.find(r => r.id === c.requiredCallId);
+              return rc?.theme === activeTheme;
+            }
+            return false;
+          });
+          // Ad-hoc calls: completed calls not linked to any required call for this theme
+          // (We show all calls in "All calls" section below the required ones)
+          const doneCount = themeRequired.filter(rc => fulfilledIds.has(rc.id)).length;
+          const totalRequired = themeRequired.length;
 
-          {/* Calls list */}
-          <div className="flex-1 overflow-y-auto">
-            {dealCalls.length === 0 ? (
-              <div className="px-4 py-8 text-center">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--border-default)] mx-auto mb-2">
-                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                </svg>
-                <p className="text-[11px] text-[var(--text-quaternary)]">No calls recorded yet</p>
-                <p className="text-[10px] text-[var(--text-quaternary)] mt-1">Calls will appear here once synced</p>
+          return (
+            <div className="w-[260px] flex-shrink-0 bg-[var(--bg-secondary)] border-l border-[var(--border-default)] flex flex-col">
+              {/* Calls header */}
+              <div className="px-4 py-3 border-b border-[var(--border-default)]">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-quaternary)]">
+                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                    </svg>
+                    <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">DD Calls</h3>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded-md">{dealCalls.length} total</span>
+                </div>
+                {avgCallRating != null && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] text-[var(--text-quaternary)]">Avg rating</span>
+                    <span className="text-[12px] font-bold" style={{ color: avgCallRating >= 7 ? '#10B981' : avgCallRating >= 4 ? '#F59E0B' : '#EF4444' }}>{avgCallRating}/10</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="px-3 py-2 space-y-0.5">
-                {dealCalls.map((call, idx) => {
-                  const rating = meetingRatings?.[call.id];
-                  return (
-                    <div key={call.id} className="relative pl-5">
-                      {/* Timeline line */}
-                      {idx < dealCalls.length - 1 && (
-                        <div className="absolute left-[7px] top-[18px] bottom-0 w-px bg-[var(--border-subtle)]" />
-                      )}
-                      {/* Timeline dot */}
-                      <div className="absolute left-0 top-[6px] w-[15px] h-[15px] rounded-full border-2 flex items-center justify-center" style={{ borderColor: rating != null ? (rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444') : 'var(--border-default)', backgroundColor: rating != null ? (rating >= 7 ? '#10B98115' : rating >= 4 ? '#F59E0B15' : '#EF444415') : 'var(--bg-primary)' }}>
-                        {rating != null && <div className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444' }} />}
-                      </div>
 
-                      <div className="pb-3 pt-0.5">
-                        <div className="flex items-start justify-between gap-1 mb-0.5">
-                          <span className="text-[11px] font-medium text-[var(--text-primary)] leading-tight">{call.title}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] text-[var(--text-quaternary)]">{call.date}</span>
-                          <CallTypeTag type={call.type} />
-                        </div>
-                        <div className="text-[10px] text-[var(--text-quaternary)] mb-1.5">{call.attendees.join(', ')}</div>
-                        {/* Rating buttons */}
-                        <div className="flex gap-0.5">
-                          {ratingOptions.map(n => (
-                            <button
-                              key={n}
-                              onClick={() => onRateMeeting(call.id, n)}
-                              className={`w-[19px] h-[19px] text-[9px] rounded flex items-center justify-center transition-all ${
-                                rating === n
-                                  ? 'bg-[var(--rrw-red)] text-white font-bold'
-                                  : 'bg-[var(--bg-primary)] text-[var(--text-quaternary)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)]'
-                              }`}
-                            >
-                              {n}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+              <div className="flex-1 overflow-y-auto">
+                {/* ── Required calls for this theme ── */}
+                {themeRequired.length > 0 && (
+                  <div className="px-3 pt-3 pb-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">Required</span>
+                      <span className="text-[10px] font-semibold" style={{ color: doneCount === totalRequired ? '#10B981' : doneCount > 0 ? '#F59E0B' : 'var(--text-quaternary)' }}>
+                        {doneCount}/{totalRequired}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="space-y-1">
+                      {themeRequired.map(rc => {
+                        const fulfilled = fulfilledIds.has(rc.id);
+                        const linkedCall = fulfilled ? dealCalls.find(c => c.requiredCallId === rc.id) : null;
+                        const rating = linkedCall ? meetingRatings?.[linkedCall.id] : null;
+                        return (
+                          <div key={rc.id} className={`rounded-lg p-2 transition-colors ${fulfilled ? 'bg-[var(--bg-primary)]' : 'bg-[var(--bg-secondary)] border border-dashed border-[var(--border-default)]'}`}>
+                            <div className="flex items-start gap-2">
+                              {/* Check circle */}
+                              <div className={`w-[16px] h-[16px] rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center ${fulfilled ? 'bg-[#10B981]' : 'border-2 border-[var(--border-default)]'}`}>
+                                {fulfilled && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-[11px] font-medium leading-tight ${fulfilled ? 'text-[var(--text-primary)]' : 'text-[var(--text-quaternary)]'}`}>
+                                  {rc.label}
+                                </div>
+                                {fulfilled && linkedCall && (
+                                  <div className="mt-1">
+                                    <div className="text-[10px] text-[var(--text-quaternary)] truncate">{linkedCall.title}</div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="text-[9px] text-[var(--text-quaternary)]">{linkedCall.date}</span>
+                                      {rating != null && (
+                                        <span className="text-[10px] font-bold" style={{ color: rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444' }}>{rating}/10</span>
+                                      )}
+                                    </div>
+                                    {/* Inline rating */}
+                                    <div className="flex gap-0.5 mt-1">
+                                      {ratingOptions.map(n => (
+                                        <button
+                                          key={n}
+                                          onClick={() => onRateMeeting(linkedCall.id, n)}
+                                          className={`w-[17px] h-[17px] text-[8px] rounded flex items-center justify-center transition-all ${
+                                            rating === n
+                                              ? 'bg-[var(--rrw-red)] text-white font-bold'
+                                              : 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)] hover:bg-[var(--bg-hover)]'
+                                          }`}
+                                        >
+                                          {n}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {!fulfilled && (
+                                  <div className="text-[9px] text-[var(--text-quaternary)] mt-0.5 italic">Not yet scheduled</div>
+                                )}
+                              </div>
+                              <CallTypeTag type={rc.type} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── All completed calls timeline ── */}
+                <div className="px-3 pt-3 pb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">All completed</span>
+                    <span className="text-[10px] text-[var(--text-quaternary)]">{dealCalls.length} calls</span>
+                  </div>
+                  {dealCalls.length === 0 ? (
+                    <div className="py-4 text-center">
+                      <p className="text-[10px] text-[var(--text-quaternary)]">No calls recorded yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {dealCalls.map((call, idx) => {
+                        const rating = meetingRatings?.[call.id];
+                        // Highlight calls that belong to the active theme
+                        const rc = call.requiredCallId ? REQUIRED_CALLS.find(r => r.id === call.requiredCallId) : null;
+                        const isThemeCall = rc?.theme === activeTheme;
+                        return (
+                          <div key={call.id} className={`relative pl-5 ${isThemeCall ? '' : 'opacity-50'}`}>
+                            {/* Timeline line */}
+                            {idx < dealCalls.length - 1 && (
+                              <div className="absolute left-[7px] top-[18px] bottom-0 w-px bg-[var(--border-subtle)]" />
+                            )}
+                            {/* Timeline dot */}
+                            <div className="absolute left-0 top-[6px] w-[15px] h-[15px] rounded-full border-2 flex items-center justify-center" style={{ borderColor: rating != null ? (rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444') : 'var(--border-default)', backgroundColor: rating != null ? (rating >= 7 ? '#10B98115' : rating >= 4 ? '#F59E0B15' : '#EF444415') : 'var(--bg-primary)' }}>
+                              {rating != null && <div className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444' }} />}
+                            </div>
+                            <div className="pb-2.5 pt-0.5">
+                              <div className="flex items-start justify-between gap-1 mb-0.5">
+                                <span className="text-[11px] font-medium text-[var(--text-primary)] leading-tight">{call.title}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-[var(--text-quaternary)]">{call.date}</span>
+                                <CallTypeTag type={call.type} />
+                                {rating != null && (
+                                  <span className="text-[10px] font-bold ml-auto" style={{ color: rating >= 7 ? '#10B981' : rating >= 4 ? '#F59E0B' : '#EF4444' }}>{rating}/10</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
