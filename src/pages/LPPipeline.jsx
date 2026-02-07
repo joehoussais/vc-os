@@ -113,8 +113,8 @@ export default function LPPipeline() {
       weightedAmount: stageMap[stage.id].weightedAmount,
     }));
 
-    // Exclude declined from active pipeline calculations
-    const activeStages = stageData.filter(s => s.id !== 'declined');
+    // Exclude declined and pre-pipeline (interested) from active pipeline calculations
+    const activeStages = stageData.filter(s => s.id !== 'declined' && s.id !== 'interested');
     const pipelineTotal = activeStages.reduce((sum, s) => sum + s.totalAmount, 0);
     const weightedTotal = activeStages.reduce((sum, s) => sum + s.weightedAmount, 0);
     const totalLPs = activeStages.reduce((sum, s) => sum + s.count, 0);
@@ -360,34 +360,47 @@ export default function LPPipeline() {
           <div className="py-3">
             {funnelData.stages.map((stage, index) => {
               // Progressive narrowing — like the Deal Flow pipeline
-              const activeStages = funnelData.stages.filter(s => s.id !== 'declined');
-              const activeIndex = activeStages.findIndex(s => s.id === stage.id);
+              // Exclude declined and interested from the funnel width progression
+              const funnelStages = funnelData.stages.filter(s => s.id !== 'declined' && s.id !== 'interested');
+              const funnelIndex = funnelStages.findIndex(s => s.id === stage.id);
               const maxWidth = 95;
               const minWidth = 30;
               let width;
               if (stage.id === 'declined') {
                 width = 30;
+              } else if (stage.id === 'interested') {
+                width = 98; // Widest — pre-pipeline pool
               } else {
-                const widthStep = (maxWidth - minWidth) / Math.max(activeStages.length - 1, 1);
-                width = maxWidth - (widthStep * activeIndex);
+                const widthStep = (maxWidth - minWidth) / Math.max(funnelStages.length - 1, 1);
+                width = maxWidth - (widthStep * funnelIndex);
               }
 
               const isDeclined = stage.id === 'declined';
+              const isInterested = stage.id === 'interested';
               const isCommitted = stage.id === 'oral_agreement' || stage.id === 'second_closing_agreement';
 
-              // Conversion rate from previous active stage
-              const prevActiveStage = activeIndex > 0 ? activeStages[activeIndex - 1] : null;
-              const prevStageData = prevActiveStage ? funnelData.stages.find(s => s.id === prevActiveStage.id) : null;
+              // Conversion rate from previous funnel stage
+              const prevFunnelStage = funnelIndex > 0 ? funnelStages[funnelIndex - 1] : null;
+              const prevStageData = prevFunnelStage ? funnelData.stages.find(s => s.id === prevFunnelStage.id) : null;
               const conversionRate = prevStageData && prevStageData.count > 0
                 ? Math.round((stage.count / prevStageData.count) * 100) : null;
 
               return (
                 <div key={stage.id}>
-                  {index > 0 && !isDeclined && conversionRate !== null && (
+                  {index > 0 && !isDeclined && !isInterested && conversionRate !== null && (
                     <div className="flex items-center justify-center gap-3 py-1 text-[11px]">
                       <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
                       <span className="font-medium" style={{ color: 'var(--rrw-red)' }}>{conversionRate}%</span>
                       <div className="h-px flex-1 max-w-[50px]" style={{ backgroundColor: 'var(--rrw-red)' }} />
+                    </div>
+                  )}
+
+                  {/* Show separator between pre-pipeline and active pipeline */}
+                  {!isInterested && !isDeclined && index > 0 && funnelData.stages[index - 1]?.id === 'interested' && (
+                    <div className="flex items-center justify-center gap-3 py-3 text-[11px]">
+                      <div className="h-px flex-1 max-w-[100px] border-t border-dashed border-amber-500/40" />
+                      <span className="text-amber-600 text-[10px] uppercase tracking-wider">Active Pipeline</span>
+                      <div className="h-px flex-1 max-w-[100px] border-t border-dashed border-amber-500/40" />
                     </div>
                   )}
 
@@ -406,9 +419,11 @@ export default function LPPipeline() {
                         ? 'border-[var(--rrw-red)] bg-[var(--rrw-red-subtle)]'
                         : isDeclined
                           ? 'border-[var(--border-subtle)] bg-[var(--bg-tertiary)] hover:border-[var(--text-quaternary)]'
-                          : isCommitted
-                            ? 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500'
-                            : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
+                          : isInterested
+                            ? 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500'
+                            : isCommitted
+                              ? 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500'
+                              : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
                     }`}
                     style={{ width: `${width}%` }}
                   >
@@ -517,7 +532,7 @@ export default function LPPipeline() {
           <div className="border-t border-[var(--border-default)] pt-4">
             <h4 className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Weight Scale</h4>
             <div className="space-y-1">
-              {stages.filter(s => s.id !== 'declined').map(stage => (
+              {stages.filter(s => s.id !== 'declined' && s.id !== 'interested').map(stage => (
                 <div key={stage.id} className="flex items-center justify-between text-[11px]">
                   <span className="text-[var(--text-quaternary)]">{stage.name}</span>
                   <span className="font-medium text-[var(--text-tertiary)]">{Math.round(stage.weight * 100)}%</span>
@@ -552,6 +567,7 @@ export default function LPPipeline() {
           {/* Column headers */}
           <div className="flex items-center px-3 py-2 text-[10px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider border-b border-[var(--border-default)]">
             <div className="flex-1">LP Name</div>
+            {selectedFund === 'fund3' && <div className="w-20 text-center">Interest</div>}
             <div className="w-28 text-center">Type</div>
             <div className="w-20 text-center">Country</div>
             <div className="w-24 text-center">Owner</div>
@@ -574,12 +590,25 @@ export default function LPPipeline() {
                     .map(id => LP_TEAM_MAP[id])
                     .filter(Boolean)
                     .join(', ') || 'Unassigned';
+                  const isEstimate = selectedFund === 'fund3' && lp.fund3AmountIsEstimate;
 
                   return (
                     <div key={lp.id || i} className="flex items-center p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] transition-colors">
                       <div className="flex-1 min-w-0">
                         <span className="font-medium text-[var(--text-primary)] text-[13px] block truncate">{lp.name}</span>
                       </div>
+                      {selectedFund === 'fund3' && (
+                        <div className="w-20 text-center">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            lp.fund3Interest === 'Yes' ? 'bg-emerald-500/10 text-emerald-600' :
+                            lp.fund3Interest === 'Maybe' ? 'bg-amber-500/10 text-amber-600' :
+                            lp.fund3Interest === 'No' ? 'bg-red-500/10 text-red-500' :
+                            'text-[var(--text-quaternary)]'
+                          }`}>
+                            {lp.fund3Interest || '—'}
+                          </span>
+                        </div>
+                      )}
                       <div className="w-28 text-center">
                         <span className="text-[11px] text-[var(--text-quaternary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded">
                           {lp.lpType || '—'}
@@ -591,11 +620,16 @@ export default function LPPipeline() {
                       <div className="w-24 text-center text-[11px] text-[var(--text-tertiary)]">
                         {ownerNames}
                       </div>
-                      <div className="w-28 text-right text-[13px] font-semibold text-[var(--text-primary)]">
-                        {formatCurrencyFull(amount, funnelData.currency)}
+                      <div className="w-28 text-right">
+                        <span className={`text-[13px] font-semibold ${isEstimate ? 'text-[var(--text-tertiary)] italic' : 'text-[var(--text-primary)]'}`}>
+                          {amount > 0 ? formatCurrencyFull(amount, isEstimate ? 'EUR' : funnelData.currency) : '—'}
+                        </span>
+                        {isEstimate && amount > 0 && (
+                          <span className="block text-[9px] text-[var(--text-quaternary)]">est. from &gt;Commit</span>
+                        )}
                       </div>
                       <div className="w-28 text-right text-[12px] text-[var(--rrw-red)] font-medium">
-                        {weighted > 0 ? formatCurrencyFull(weighted, funnelData.currency) : '—'}
+                        {weighted > 0 ? formatCurrencyFull(weighted, isEstimate ? 'EUR' : funnelData.currency) : '—'}
                       </div>
                     </div>
                   );

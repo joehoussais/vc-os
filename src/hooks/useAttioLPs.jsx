@@ -30,7 +30,9 @@ export const COMMIT_STAGES = [
 ];
 
 // Fund III (RRW3) pipeline stages (rrw_3_status)
+// "Interested" is a virtual stage for LPs with rrw_3_7 (Maybe/Yes) but no rrw_3_status yet
 export const FUND3_STAGES = [
+  { id: 'interested', name: 'Interested (Pre-Pipeline)', attioValues: ['__interested__'], weight: 0.03 },
   { id: 'to_contact', name: 'To Contact', attioValues: ['To contact'], weight: 0.05 },
   { id: 'contact_to_initiate', name: 'Contact to Initiate', attioValues: ['Contact to initiate'], weight: 0.05 },
   { id: 'waiting_for_answer', name: 'Waiting for Answer', attioValues: ['Waiting for answer'], weight: 0.10 },
@@ -39,6 +41,7 @@ export const FUND3_STAGES = [
   { id: 'in_depth', name: 'In-Depth Discussion', attioValues: ['In depth discussion'], weight: 0.50 },
   { id: 'pause', name: 'Pause', attioValues: ['Pause'], weight: 0.10 },
   { id: 'oral_agreement', name: 'Oral Agreement', attioValues: ['Oral agreement'], weight: 0.90 },
+  { id: 'declined', name: 'Declined', attioValues: ['__declined__'], weight: 0 },
 ];
 
 // Fund II — historical/closed fund. Fund II LPs are tagged as "Fund II LP" stage in >Commit.
@@ -139,10 +142,23 @@ export function useAttioLPs() {
       const commitPriority = getRatingValue(lp, 'priority_6');
 
       // Fund III (RRW3) pipeline
-      const fund3Status = getAttrValue(lp, 'rrw_3_status');
+      const fund3StatusRaw = getAttrValue(lp, 'rrw_3_status');
       const fund3Amount = getCurrencyValue(lp, 'amount_rrw');
       const fund3Priority = getRatingValue(lp, 'priority_rrw_3');
       const fund3Interest = getAttrValue(lp, 'rrw_3_7'); // Maybe / Yes / No
+
+      // Derive effective Fund III status:
+      // - If LP has a real rrw_3_status, use it
+      // - If LP has interest (Maybe/Yes) but no status, route to virtual "Interested" stage
+      // - If LP has interest = "No", route to virtual "Declined" stage
+      let fund3Status = fund3StatusRaw;
+      if (!fund3StatusRaw && fund3Interest) {
+        if (fund3Interest === 'No') {
+          fund3Status = '__declined__';
+        } else {
+          fund3Status = '__interested__';
+        }
+      }
 
       // Other
       const comment = getAttrValue(lp, 'comment_2');
@@ -168,7 +184,8 @@ export function useAttioLPs() {
         commitPriority,
         // Fund III
         fund3Status,
-        fund3Amount,
+        fund3Amount: fund3Amount || commitAmount || null, // Fall back to >Commit amount for ticket size estimate
+        fund3AmountIsEstimate: !fund3Amount && !!commitAmount, // Flag when using >Commit amount as proxy
         fund3Priority,
         fund3Interest,
         // Fund II (derived)
