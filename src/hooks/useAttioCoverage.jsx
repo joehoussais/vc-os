@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  fetchAllDeals, fetchCompaniesByIds, fetchListEntries,
+  fetchDealsByIds, fetchCompaniesByIds, fetchListEntries,
   getAttrValue, getAttrValues, getEntryValue, getLocationCountryCode,
   getCachedCoverage, setCachedCoverage,
 } from '../services/attioApi';
@@ -62,58 +62,11 @@ function dateToQuarter(dateStr) {
   return `Q${quarter} ${date.getFullYear()}`;
 }
 
-// Deterministic hash for date redistribution
-function simpleHash(str) {
-  let hash = 0;
-  for (let i = 0; i < (str || '').length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-// Spread bulk-import clustered dates across 2022-2025 (48 months)
-function redistributeBulkDates(items) {
-  const dateCounts = {};
-  for (const d of items) {
-    if (d.announcedDate) {
-      dateCounts[d.announcedDate] = (dateCounts[d.announcedDate] || 0) + 1;
-    }
-  }
-
-  const CLUSTER_THRESHOLD = 10;
-  const bulkDates = new Set(
-    Object.entries(dateCounts)
-      .filter(([, count]) => count >= CLUSTER_THRESHOLD)
-      .map(([date]) => date)
-  );
-
-  if (bulkDates.size === 0) return items;
-
-  return items.map(d => {
-    if (!d.announcedDate || !bulkDates.has(d.announcedDate)) return d;
-
-    // Spread across Jan 2022 – Dec 2025 (48 months)
-    const hash = simpleHash(d.id);
-    const monthOffset = hash % 48;
-    const year = 2022 + Math.floor(monthOffset / 12);
-    const month = (monthOffset % 12) + 1;
-    const day = (hash % 28) + 1;
-    const syntheticDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    return {
-      ...d,
-      announcedDate: syntheticDate,
-      date: dateToQuarter(syntheticDate),
-    };
-  });
-}
-
 /**
- * useAttioCoverage — deal-based sourcing universe.
+ * useAttioCoverage — coverage-first sourcing universe.
  *
- * Primary: all deals from deals_2 + coverage list entries from deal_coverage_6
- * Enriched with: linked companies (fetched by ID)
+ * Flow: fetch coverage list → filter in_scope=true → fetch those deals → fetch linked companies
+ * Only the ~222 in-scope deals are the universe.
  *
  * Output shape matches useAttioDeals for UI compatibility.
  */
@@ -124,14 +77,7 @@ export function useAttioCoverage() {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(!!cached);
 
-  const processData = useCallback((rawDeals, companiesMap, listEntries) => {
-    // Build coverage map: deal record ID → list entry
-    const coverageMap = {};
-    for (const entry of listEntries) {
-      const dealId = entry.parent_record_id;
-      if (dealId) coverageMap[dealId] = entry;
-    }
-
+  const processData = useCallback((rawDeals, companiesMap, coverageMap) => {
     const result = rawDeals.map(deal => {
       const dealRecordId = deal.id?.record_id;
       const dealName = getAttrValue(deal, 'deal_id');
@@ -162,10 +108,10 @@ export function useAttioCoverage() {
       // Company status
       const companyStatus = company ? getAttrValue(company, 'status_4') : null;
 
-      // Coverage list entry
+      // Coverage list entry (always exists since we started from in-scope entries)
       const coverage = coverageMap[dealRecordId];
       const coverageEntryId = coverage?.entry_id || null;
-      const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
+      const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : true;
 
       // Interaction data from company
       const firstEmailInteraction = company ? getAttrValue(company, 'first_email_interaction') : null;
@@ -186,8 +132,8 @@ export function useAttioCoverage() {
 
       const seen = statusSeen || companyProgressed || hasEmailInteraction || hasCalendarInteraction || !!receivedDate;
 
-      // In scope from coverage list — defaults to false if not in list
-      const inScope = coverage ? coverageInScope : false;
+      // All deals here are in scope (we filtered the coverage list for in_scope=true)
+      const inScope = true;
 
       // Amount — coverage list stores in M€ already
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
@@ -196,17 +142,26 @@ export function useAttioCoverage() {
         : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
-      // Outcome
-      let outcome = 'Missed';
-      if (seen) {
-        if (companyStatus === 'Passed' || companyStatus === 'To Decline' || companyStatus === 'Analysed but too early' || companyStatus === 'No US path for now') outcome = 'Passed';
-        else if (companyStatus === 'Due Dilligence' || companyStatus === 'Due Diligence') outcome = 'DD';
-        else if (companyStatus === 'IC') outcome = 'IC';
-        else if (companyStatus === 'Portfolio') outcome = 'Invested';
-        else if (dealStatus === 'deal flow') outcome = 'In Pipeline';
-        else if (dealStatus === 'Announced deals we saw') outcome = 'Saw';
-        else outcome = 'Tracked';
+      // ── Reception label (best → worst) ──────────────────────
+      let outcome = 'Completely Missed';
+
+      if (companyStatus === 'Portfolio') {
+        outcome = 'Invested';
+      } else if (companyStatus === 'IC') {
+        // Went to IC but didn't invest = outcompeted
+        outcome = 'Analysed & Lost';
+      } else if (['Passed', 'To Decline', 'Analysed but too early',
+                   'No US path for now', 'Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
+        outcome = 'Analysed & Passed';
+      } else if (seen && (hasEmailInteraction || hasCalendarInteraction ||
+                 companyStatus === 'Contacted / to meet' || companyStatus === 'Met')) {
+        // We actively reached out or met them but no formal analysis
+        outcome = 'Tried, No Response';
+      } else if (seen) {
+        // We knew about it but didn't reach out
+        outcome = "Saw, Didn't Try";
       }
+      // else stays 'Completely Missed'
 
       // Industry
       const dealIndustry = getAttrValues(deal, 'industry');
@@ -264,7 +219,7 @@ export function useAttioCoverage() {
       };
     }).filter(Boolean);
 
-    return redistributeBulkDates(result);
+    return result;
   }, []);
 
   useEffect(() => {
@@ -274,31 +229,47 @@ export function useAttioCoverage() {
       try {
         if (!cached) setLoading(true);
 
-        // Fetch deals and coverage list entries in parallel
-        const [rawDeals, listEntries] = await Promise.all([
-          fetchAllDeals(),
-          fetchListEntries(),
-        ]);
+        // 1. Fetch all coverage list entries
+        const allListEntries = await fetchListEntries();
         if (cancelled) return;
 
-        // Extract unique company IDs from deals
+        // 2. Filter to in_scope = true — these are the curated universe
+        const inScopeEntries = allListEntries.filter(
+          entry => !!getEntryValue(entry, 'in_scope')
+        );
+
+        // 3. Extract deal IDs from in-scope entries
+        const dealIds = [...new Set(
+          inScopeEntries.map(e => e.parent_record_id).filter(Boolean)
+        )];
+
+        // 4. Fetch only those deals
+        const rawDeals = await fetchDealsByIds(dealIds);
+        if (cancelled) return;
+
+        // 5. Extract company IDs from deals, fetch companies
         const companyIds = [...new Set(
           rawDeals
             .map(d => d.values?.associated_company_domain?.[0]?.target_record_id)
             .filter(Boolean)
         )];
-
-        // Fetch linked companies
         const rawCompanies = await fetchCompaniesByIds(companyIds);
         if (cancelled) return;
 
-        // Build companies lookup
+        // Build lookups
         const companiesMap = {};
         for (const c of rawCompanies) {
           companiesMap[c.id?.record_id] = c;
         }
 
-        const processed = processData(rawDeals, companiesMap, listEntries);
+        // Coverage map uses ALL list entries (not just in-scope) so toggle works
+        const coverageMap = {};
+        for (const entry of allListEntries) {
+          const dealId = entry.parent_record_id;
+          if (dealId) coverageMap[dealId] = entry;
+        }
+
+        const processed = processData(rawDeals, companiesMap, coverageMap);
 
         if (!cancelled && processed.length > 0) {
           setCompanies(processed);

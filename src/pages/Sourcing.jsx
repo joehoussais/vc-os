@@ -56,13 +56,11 @@ function monthsAgo(dateStr) {
 
 const OUTCOME_STYLES = {
   'Invested': 'bg-emerald-500/10 text-emerald-500',
-  'IC': 'bg-blue-500/10 text-blue-500',
-  'DD': 'bg-blue-500/10 text-blue-500',
-  'In Pipeline': 'bg-amber-500/10 text-amber-500',
-  'Saw': 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
-  'Tracked': 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]',
-  'Passed': 'bg-[var(--bg-hover)] text-[var(--text-secondary)]',
-  'Missed': 'bg-red-500/10 text-red-500',
+  'Analysed & Passed': 'bg-blue-500/10 text-blue-500',
+  'Analysed & Lost': 'bg-purple-500/10 text-purple-500',
+  'Tried, No Response': 'bg-amber-500/10 text-amber-500',
+  "Saw, Didn't Try": 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]',
+  'Completely Missed': 'bg-red-500/10 text-red-500',
 };
 
 // ─── OBJECTIVE Market Score ───────────────────────────────
@@ -277,7 +275,7 @@ export default function Sourcing() {
   // Now the market tells us if we were right.
   const shadowPortfolio = useMemo(() => {
     return deals
-      .filter(d => d.outcome === 'Passed')
+      .filter(d => d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost')
       .map(d => {
         const companyKey = (d.company || '').toLowerCase().trim();
         const callData = callRatingsMap[companyKey];
@@ -299,22 +297,21 @@ export default function Sourcing() {
     if (total === 0) return null;
 
     const seen = deals.filter(d => d.seen).length;
-    const passed = deals.filter(d => d.outcome === 'Passed').length;
-    const missed = deals.filter(d => d.outcome === 'Missed').length;
+    const analysed = deals.filter(d => d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost').length;
+    const missed = deals.filter(d => d.outcome === 'Completely Missed').length;
     const invested = deals.filter(d => d.outcome === 'Invested').length;
-    const ic = deals.filter(d => d.outcome === 'IC').length;
-    const dd = deals.filter(d => d.outcome === 'DD').length;
+    const analysedLost = deals.filter(d => d.outcome === 'Analysed & Lost').length;
+    const tried = deals.filter(d => d.outcome === 'Tried, No Response').length;
 
-    const seenToDD = seen > 0 ? Math.round((dd + ic + invested) / seen * 100) : 0;
-    const ddToIC = (dd + ic + invested) > 0 ? Math.round((ic + invested) / (dd + ic + invested) * 100) : 0;
-    const icToInvested = (ic + invested) > 0 ? Math.round(invested / (ic + invested) * 100) : 0;
-    const passRate = seen > 0 ? Math.round(passed / seen * 100) : 0;
+    const seenToAnalysed = seen > 0 ? Math.round((analysed + analysedLost + invested) / seen * 100) : 0;
+    const analysedToInvested = (analysed + analysedLost + invested) > 0 ? Math.round(invested / (analysed + analysedLost + invested) * 100) : 0;
+    const passRate = seen > 0 ? Math.round(analysed / seen * 100) : 0;
 
-    const highConvictionMisses = deals.filter(d => (d.outcome === 'Passed' || d.outcome === 'Missed') && d.rating >= 6);
+    const highConvictionMisses = deals.filter(d => (d.outcome === 'Analysed & Passed' || d.outcome === 'Completely Missed') && d.rating >= 6);
 
     const passedByRegion = {};
     const passedByStage = {};
-    deals.filter(d => d.outcome === 'Passed' || d.outcome === 'Missed').forEach(d => {
+    deals.filter(d => d.outcome === 'Analysed & Passed' || d.outcome === 'Completely Missed').forEach(d => {
       passedByRegion[d.filterRegion] = (passedByRegion[d.filterRegion] || 0) + 1;
       passedByStage[d.stage] = (passedByStage[d.stage] || 0) + 1;
     });
@@ -331,13 +328,13 @@ export default function Sourcing() {
     }
 
     const ratedDeals = deals.filter(d => d.rating);
-    const highRatedGoodOutcome = ratedDeals.filter(d => d.rating >= 6 && (d.outcome === 'Invested' || d.outcome === 'IC' || d.outcome === 'DD')).length;
+    const highRatedGoodOutcome = ratedDeals.filter(d => d.rating >= 6 && (d.outcome === 'Invested' || d.outcome === 'Analysed & Lost')).length;
     const highRatedTotal = ratedDeals.filter(d => d.rating >= 6).length;
     const judgmentAccuracy = highRatedTotal > 0 ? Math.round(highRatedGoodOutcome / highRatedTotal * 100) : null;
 
     return {
-      total, seen, passed, missed, invested, ic, dd,
-      seenToDD, ddToIC, icToInvested, passRate,
+      total, seen, analysed, missed, invested, analysedLost, tried,
+      seenToAnalysed, analysedToInvested, passRate,
       highConvictionMisses,
       passedByRegion, passedByStage,
       avgRatingByOutcome,
@@ -345,8 +342,10 @@ export default function Sourcing() {
     };
   }, [deals]);
 
+  const maxCount = Math.max(...(quarterlyChartData.counts || [0]), 5);
   const chartOptions = {
     responsive: true, maintainAspectRatio: false,
+    layout: { padding: { left: 5, right: 5, top: 10 } },
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 20, boxHeight: 2, font: { size: 11 }, color: 'var(--text-tertiary)', usePointStyle: false, padding: 16 } },
@@ -354,7 +353,7 @@ export default function Sourcing() {
     },
     scales: {
       y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { callback: v => v + '%', color: 'var(--text-tertiary)' }, grid: { color: 'var(--border-subtle)' } },
-      y1: { type: 'linear', position: 'right', min: 0, ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { drawOnChartArea: false } },
+      y1: { type: 'linear', position: 'right', min: 0, suggestedMax: Math.ceil(maxCount * 1.3), ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { drawOnChartArea: false } },
       x: { ticks: { color: 'var(--text-tertiary)', maxRotation: 45, maxTicksLimit: 18 }, grid: { color: 'var(--border-subtle)' } }
     }
   };
@@ -424,8 +423,8 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
           </div>
           <div className="h-72">
             <Bar data={{ labels: quarterlyChartData.labels, datasets: [
-              { type: 'bar', label: 'Companies', data: quarterlyChartData.counts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', borderRadius: 4, yAxisID: 'y1', order: 2 },
-              { type: 'line', label: 'Coverage %', data: quarterlyChartData.coverage, borderColor: chartColors.rrwRed, backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: chartColors.rrwRed, spanGaps: false, yAxisID: 'y', order: 0 },
+              { type: 'bar', label: 'Deals', data: quarterlyChartData.counts, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', hoverBackgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)', borderRadius: 6, barPercentage: 0.7, yAxisID: 'y1', order: 2 },
+              { type: 'line', label: 'Coverage %', data: quarterlyChartData.coverage, borderColor: chartColors.rrwRed, backgroundColor: 'rgba(230, 52, 36, 0.08)', fill: true, tension: 0.25, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: chartColors.rrwRed, pointBorderColor: theme === 'dark' ? '#1a1a1a' : '#fff', pointBorderWidth: 1.5, spanGaps: false, yAxisID: 'y', order: 0, clip: false },
             ]}} options={chartOptions} />
           </div>
         </div>
@@ -463,7 +462,7 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
         <div className="flex items-center justify-between mb-4">
           <div><h3 className="font-semibold text-[var(--text-primary)]">Outcome Summary</h3><p className="text-xs text-[var(--text-tertiary)]">Derived from Attio status</p></div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {Object.entries(pieData.outcomeData).sort((a, b) => b[1] - a[1]).map(([outcome, count]) => (
             <div key={outcome} className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
               <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium mb-1 ${OUTCOME_STYLES[outcome] || 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>{outcome}</span>
@@ -720,17 +719,16 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
   const ratingBuckets = ['1-2', '3-4', '5-6', '7-8', '9-10'];
   const bucketRange = [[1,2],[3,4],[5,6],[7,8],[9,10]];
   const investedByRating = bucketRange.map(([lo, hi]) => attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Invested').length);
-  const passedByRating = bucketRange.map(([lo, hi]) => attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Passed').length);
-  const missedByRating = bucketRange.map(([lo, hi]) => attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Missed').length);
+  const passedByRating = bucketRange.map(([lo, hi]) => attioDeals.filter(d => d.rating >= lo && d.rating <= hi && (d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost')).length);
+  const missedByRating = bucketRange.map(([lo, hi]) => attioDeals.filter(d => d.rating >= lo && d.rating <= hi && d.outcome === 'Completely Missed').length);
 
   // 4-quadrant analysis (Sequoia style)
   const quadrants = useMemo(() => {
     const invested = attioDeals.filter(d => d.outcome === 'Invested');
-    const passed = attioDeals.filter(d => d.outcome === 'Passed');
     // For now, use deal amount as proxy for success signal
     const truePositives = invested.length; // We invested (all are "positive" decisions)
-    const falseNegatives = shadowPortfolio.filter(d => d.outcome === 'Passed' && d.marketScore >= 6).length;
-    const trueNegatives = shadowPortfolio.filter(d => d.outcome === 'Passed' && d.marketScore <= 2).length;
+    const falseNegatives = shadowPortfolio.filter(d => (d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost') && d.marketScore >= 6).length;
+    const trueNegatives = shadowPortfolio.filter(d => (d.outcome === 'Analysed & Passed' || d.outcome === 'Analysed & Lost') && d.marketScore <= 2).length;
     const falsePositives = 0; // Would need portfolio performance data
     return { truePositives, falseNegatives, trueNegatives, falsePositives };
   }, [attioDeals, shadowPortfolio]);
@@ -747,9 +745,9 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
         <StatCard label="Total Deals" value={scorecard.total} sub="All tracked" />
         <StatCard label="Coverage" value={Math.round(scorecard.seen / scorecard.total * 100) + '%'} sub={`${scorecard.seen} of ${scorecard.total}`} />
-        <StatCard label="Pass Rate" value={scorecard.passRate + '%'} sub={`${scorecard.passed} of ${scorecard.seen} seen`} />
+        <StatCard label="Pass Rate" value={scorecard.passRate + '%'} sub={`${scorecard.analysed} of ${scorecard.seen} seen`} />
         <StatCard label="Invested" value={scorecard.invested} sub={scorecard.seen > 0 ? Math.round(scorecard.invested / scorecard.seen * 100) + '% of seen' : ''} color="text-emerald-500" />
-        <StatCard label="Seen to DD+" value={scorecard.seenToDD + '%'} sub="Conversion" />
+        <StatCard label="Seen → Analysed" value={scorecard.seenToAnalysed + '%'} sub="Conversion" />
         {scorecard.judgmentAccuracy !== null && <StatCard label="Rating Accuracy" value={scorecard.judgmentAccuracy + '%'} sub="Rated 6+ that reached DD/IC/Invest" color={scorecard.judgmentAccuracy >= 50 ? 'text-emerald-500' : 'text-amber-500'} />}
       </div>
 
@@ -786,11 +784,9 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
         <h3 className="font-semibold text-[var(--text-primary)] mb-4">Decision Funnel</h3>
         <div className="flex items-center justify-between gap-2">
           <FunnelStep label="Seen" value={scorecard.seen} />
-          <FunnelArrow pct={scorecard.seenToDD} />
-          <FunnelStep label="DD+" value={scorecard.dd + scorecard.ic + scorecard.invested} />
-          <FunnelArrow pct={scorecard.ddToIC} />
-          <FunnelStep label="IC+" value={scorecard.ic + scorecard.invested} />
-          <FunnelArrow pct={scorecard.icToInvested} />
+          <FunnelArrow pct={scorecard.seenToAnalysed} />
+          <FunnelStep label="Analysed" value={scorecard.analysed + scorecard.analysedLost + scorecard.invested} />
+          <FunnelArrow pct={scorecard.analysedToInvested} />
           <FunnelStep label="Invested" value={scorecard.invested} highlight />
         </div>
       </div>
@@ -802,7 +798,7 @@ function ScorecardTab({ scorecard, attioDeals, shadowPortfolio }) {
           <div className="h-64">
             <Bar data={{ labels: ratingBuckets, datasets: [
               { label: 'Invested', data: investedByRating, backgroundColor: 'rgba(16, 185, 129, 0.7)', borderRadius: 3 },
-              { label: 'Passed', data: passedByRating, backgroundColor: 'rgba(156, 163, 175, 0.5)', borderRadius: 3 },
+              { label: 'Analysed', data: passedByRating, backgroundColor: 'rgba(59, 130, 246, 0.5)', borderRadius: 3 },
               { label: 'Missed', data: missedByRating, backgroundColor: 'rgba(239, 68, 68, 0.5)', borderRadius: 3 },
             ]}} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, font: { size: 11 }, color: 'var(--text-tertiary)' } } }, scales: { x: { stacked: true, ticks: { color: 'var(--text-tertiary)' }, grid: { display: false }, title: { display: true, text: 'Initial Rating', color: 'var(--text-tertiary)', font: { size: 11 } } }, y: { stacked: true, ticks: { color: 'var(--text-tertiary)', precision: 0 }, grid: { color: 'var(--border-subtle)' } } } }} />
           </div>
@@ -1037,7 +1033,7 @@ function DealModal({ deal, onClose }) {
         {deal.description && <p className="text-[13px] text-[var(--text-secondary)] mb-4">{deal.description}</p>}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <InfoCard label="Quarter" value={deal.date} />
-          <InfoCard label="Outcome" value={deal.outcome} highlight={deal.outcome === 'Invested' || deal.outcome === 'IC'} />
+          <InfoCard label="Outcome" value={deal.outcome} highlight={deal.outcome === 'Invested'} />
           <InfoCard label="Attio Status" value={deal.status || '—'} />
           <InfoCard label="Rating" value={deal.rating ? deal.rating + '/10' : 'Not rated'} highlight={deal.rating >= 7} />
           <InfoCard label="Total Funding" value={deal.totalFunding || '—'} />

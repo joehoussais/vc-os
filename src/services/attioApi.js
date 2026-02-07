@@ -39,6 +39,35 @@ export async function fetchAllDeals() {
   return allRecords;
 }
 
+// Fetch deals by IDs using filter (for coverage-first flow)
+export async function fetchDealsByIds(dealIds) {
+  if (!dealIds.length) return [];
+
+  const chunks = [];
+  for (let i = 0; i < dealIds.length; i += 50) {
+    chunks.push(dealIds.slice(i, i + 50));
+  }
+
+  let allRecords = [];
+
+  for (const chunk of chunks) {
+    let offset = null;
+    do {
+      const payload = {
+        filter: { "record_id": { "$in": chunk } },
+        limit: 100,
+      };
+      if (offset) payload.offset = offset;
+
+      const data = await attioQuery('/objects/deals_2/records/query', payload);
+      allRecords = allRecords.concat(data.data || []);
+      offset = data.next_page_offset || null;
+    } while (offset);
+  }
+
+  return allRecords;
+}
+
 // Fetch companies by IDs using filter (much faster than fetching all)
 export async function fetchCompaniesByIds(companyIds) {
   if (!companyIds.length) return [];
