@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
+import { countryToFilterRegion } from '../data/geography';
 
 // Stages where clicking "View in Deal Analysis" makes sense
 const DEAL_ANALYSIS_STAGES = new Set(['dealflow', 'met', 'analysis', 'committee']);
@@ -224,6 +225,35 @@ export default function DealFunnel() {
     const overallConversion = dealCumulative.dealflow > 0
       ? ((dealCumulative.portfolio / dealCumulative.dealflow) * 100).toFixed(2) : '0.00';
 
+    // Universe breakdowns (owner, region, industry)
+    const total = filteredCompanies.length || 1;
+    const toBreakdown = (counts) =>
+      Object.entries(counts)
+        .map(([name, count]) => ({ name, count, pct: Math.round((count / total) * 100) }))
+        .sort((a, b) => b.count - a.count);
+
+    const ownerCounts = {};
+    const regionCounts = {};
+    const industryCounts = {};
+    filteredCompanies.forEach(c => {
+      // Owners
+      c.ownerIds.forEach(oid => {
+        const name = TEAM_MAP[oid] || 'Unknown';
+        ownerCounts[name] = (ownerCounts[name] || 0) + 1;
+      });
+      // Regions
+      const region = countryToFilterRegion[c.location] || (c.location ? 'Other Europe' : 'Unknown');
+      regionCounts[region] = (regionCounts[region] || 0) + 1;
+      // Industry
+      if (c.categories?.length) {
+        c.categories.forEach(cat => {
+          industryCounts[cat] = (industryCounts[cat] || 0) + 1;
+        });
+      } else {
+        industryCounts['Uncategorized'] = (industryCounts['Uncategorized'] || 0) + 1;
+      }
+    });
+
     return {
       stages,
       counts: cumulativeCounts,
@@ -235,6 +265,9 @@ export default function DealFunnel() {
       outreachOther,
       totalDeals: filteredDeals.length,
       activeDeals: filteredDeals.filter(d => d.isActive).length,
+      universeByOwner: toBreakdown(ownerCounts),
+      universeByRegion: toBreakdown(regionCounts),
+      universeByIndustry: toBreakdown(industryCounts),
     };
   }, [filteredCompanies, filteredDeals]);
 
@@ -329,6 +362,34 @@ export default function DealFunnel() {
               const widthStep = (maxWidth - minWidth) / (funnel.stages.length - 1);
               const width = maxWidth - (widthStep * index);
               const isSelected = selectedStage === stage.id;
+
+              {/* Universe stage with owner/region/industry breakdown */}
+              if (stage.id === 'universe') {
+                return (
+                  <div key={stage.id}>
+                    <div
+                      onClick={() => setSelectedStage(isSelected ? null : stage.id)}
+                      className={`mx-auto mb-1 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
+                        isSelected
+                          ? 'border-[var(--rrw-red)] bg-[var(--rrw-red-subtle)]'
+                          : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--rrw-red)]'
+                      }`}
+                      style={{ width: `${width}%` }}
+                    >
+                      <div className="py-3 px-5 text-center">
+                        <div className="text-xl font-bold text-[var(--text-primary)]">{stage.count.toLocaleString()}</div>
+                        <div className="text-[13px] font-medium text-[var(--text-secondary)]">{stage.name}</div>
+                        <div className="text-[10px] text-[var(--text-quaternary)] mt-0.5">{stage.description}</div>
+                      </div>
+                      <UniverseBreakdown
+                        byOwner={funnel.universeByOwner}
+                        byRegion={funnel.universeByRegion}
+                        byIndustry={funnel.universeByIndustry}
+                      />
+                    </div>
+                  </div>
+                );
+              }
 
               {/* Outreach stage with sub-breakdown */}
               if (stage.id === 'outreach') {
@@ -813,6 +874,81 @@ function DealTable({ items }) {
         )}
       </div>
     </>
+  );
+}
+
+// ─── Universe breakdown (owner / region / industry) ─────────────────
+const SEGMENT_COLORS = ['#DC2626', '#2563EB', '#059669', '#D97706', '#7C3AED', '#EC4899'];
+const SEGMENT_TABS = [
+  { id: 'owner', label: 'Owner' },
+  { id: 'region', label: 'Region' },
+  { id: 'industry', label: 'Industry' },
+];
+
+function UniverseBreakdown({ byOwner, byRegion, byIndustry }) {
+  const [tab, setTab] = useState('owner');
+  const data = tab === 'owner' ? byOwner : tab === 'region' ? byRegion : byIndustry;
+  const top = data.slice(0, 6);
+  const rest = data.slice(6);
+  const otherCount = rest.reduce((s, d) => s + d.count, 0);
+  const total = data.reduce((s, d) => s + d.count, 0) || 1;
+
+  const segments = [
+    ...top.map((d, i) => ({ ...d, color: SEGMENT_COLORS[i] })),
+    ...(otherCount > 0 ? [{ name: 'Other', count: otherCount, pct: Math.round((otherCount / total) * 100), color: '#9CA3AF' }] : []),
+  ];
+
+  return (
+    <div className="border-t border-[var(--border-default)]">
+      {/* Tab toggle */}
+      <div className="flex items-center justify-center gap-0.5 py-2 px-3">
+        {SEGMENT_TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
+            className={`px-2.5 py-1 text-[10px] font-medium rounded transition-all ${
+              tab === t.id
+                ? 'bg-[var(--rrw-red)] text-white'
+                : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Segmented bar */}
+      <div className="flex h-2.5 mx-3 mb-2 rounded-full overflow-hidden gap-px">
+        {segments.map((s, i) => (
+          <div
+            key={i}
+            className="h-full transition-all duration-300"
+            style={{
+              width: `${Math.max((s.count / total) * 100, 1.5)}%`,
+              backgroundColor: s.color,
+              borderRadius: i === 0 ? '9999px 0 0 9999px' : i === segments.length - 1 ? '0 9999px 9999px 0' : '0',
+            }}
+            title={`${s.name}: ${s.count} (${s.pct}%)`}
+          />
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 px-3 pb-2.5">
+        {segments.map((s, i) => (
+          <div key={i} className="flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="text-[var(--text-secondary)] truncate">{s.name}</span>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+              <span className="font-semibold text-[var(--text-primary)]">{s.count.toLocaleString()}</span>
+              <span className="text-[var(--text-quaternary)]">{s.pct}%</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

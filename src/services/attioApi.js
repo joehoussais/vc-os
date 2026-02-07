@@ -195,6 +195,7 @@ export function extractCompanyFields(record) {
   const logoUrl = v.logo_url?.[0]?.value || null;
   const location = v.primary_location?.[0]?.country_code
     || v.cross_checked_hq_country?.[0]?.value || null;
+  const categories = (v.categories || []).map(c => c.value || c.option?.title).filter(Boolean);
 
   return {
     id,
@@ -206,6 +207,7 @@ export function extractCompanyFields(record) {
     domain,
     logoUrl,
     location,
+    categories,
   };
 }
 

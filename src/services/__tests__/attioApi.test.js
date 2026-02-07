@@ -183,6 +183,7 @@ describe('extractCompanyFields', () => {
       domain: 'acme.com',
       logoUrl: 'https://logo.com/acme.png',
       location: 'FR',
+      categories: [],
     });
   });
 
