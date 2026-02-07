@@ -3,6 +3,17 @@
 
 const ATTIO_API_BASE = 'https://api.attio.com/v2';
 
+async function verifyJWT(token) {
+  const identityURL = process.env.IDENTITY_URL || `${process.env.URL}/.netlify/identity`;
+  const res = await fetch(`${identityURL}/user`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const user = await res.json();
+  if (!user.email?.endsWith('@redriverwest.com')) return null;
+  return user;
+}
+
 export default async (req) => {
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) {
@@ -16,6 +27,24 @@ export default async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Verify JWT from Netlify Identity
+  const authHeader = req.headers.get('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const user = await verifyJWT(token);
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Invalid or unauthorized token' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }

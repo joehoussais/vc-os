@@ -1,13 +1,24 @@
 // Attio API service - calls our Netlify serverless function proxy
+import { useState, useEffect } from 'react';
+import netlifyIdentity from 'netlify-identity-widget';
 
 const API_PATH = '/api/attio';
 const CACHE_KEY = 'attio-deals-cache';
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+function getAuthToken() {
+  const user = netlifyIdentity.currentUser();
+  return user?.token?.access_token || null;
+}
+
 async function attioQuery(endpoint, payload = {}, method = 'POST') {
+  const token = getAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(API_PATH, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ endpoint, payload, method }),
   });
 
@@ -233,23 +244,31 @@ export async function fetchPortfolioCompanies(extraNames = []) {
     offset = data.next_page_offset || null;
   } while (offset);
 
-  // Fetch extra companies by name (ones not tagged "Portfolio" in Attio)
-  for (const name of extraNames) {
-    try {
-      const data = await attioQuery('/objects/companies/records/query', {
+  // Fetch extra companies by name in parallel (ones not tagged "Portfolio" in Attio)
+  const existingIds = new Set(allRecords.map(r => r.id?.record_id));
+  const extraResults = await Promise.all(
+    extraNames.map(name =>
+      attioQuery('/objects/companies/records/query', {
         filter: { "name": { "$contains": name } },
         limit: 5,
-      });
-      const results = data.data || [];
-      const match = results.find(r => {
-        const n = r.values?.name?.[0]?.value?.toLowerCase() || '';
-        return n === name.toLowerCase() || n.startsWith(name.toLowerCase());
-      });
-      if (match && !allRecords.find(r => r.id?.record_id === match.id?.record_id)) {
-        allRecords.push(match);
-      }
-    } catch (e) {
-      console.warn(`Could not fetch extra portfolio company: ${name}`, e);
+      })
+        .then(data => {
+          const results = data.data || [];
+          return results.find(r => {
+            const n = r.values?.name?.[0]?.value?.toLowerCase() || '';
+            return n === name.toLowerCase() || n.startsWith(name.toLowerCase());
+          }) || null;
+        })
+        .catch(e => {
+          console.warn(`Could not fetch extra portfolio company: ${name}`, e);
+          return null;
+        })
+    )
+  );
+  for (const match of extraResults) {
+    if (match && !existingIds.has(match.id?.record_id)) {
+      allRecords.push(match);
+      existingIds.add(match.id?.record_id);
     }
   }
 
@@ -490,60 +509,79 @@ export function getEntryValue(entry, slug) {
   return val;
 }
 
-// Session cache: save processed deals so page refreshes are instant
-export function getCachedDeals() {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const { data, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp > CACHE_TTL) {
-      sessionStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
+// Session cache factory — eliminates duplication across cache keys
+export function createSessionCache(key, ttl = CACHE_TTL) {
+  return {
+    get() {
+      try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const { data, timestamp } = JSON.parse(raw);
+        if (Date.now() - timestamp > ttl) {
+          sessionStorage.removeItem(key);
+          return null;
+        }
+        return data;
+      } catch {
+        return null;
+      }
+    },
+    set(data) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+      } catch { /* sessionStorage full or unavailable — silent fallback */ }
+    },
+    clear() {
+      try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+    },
+  };
 }
 
-export function setCachedDeals(deals) {
-  try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-      data: deals,
-      timestamp: Date.now(),
-    }));
-  } catch {
-    // sessionStorage full or unavailable — ignore
-  }
+// All cache instances — centralized for bulk clearing (sync button)
+const dealsCache = createSessionCache(CACHE_KEY);
+const coverageCache = createSessionCache('attio-coverage-cache');
+const dealFunnelCache = createSessionCache('attio-deal-funnel-cache-v3');
+const lpsCache = createSessionCache('attio-lps-cache');
+const portfolioCache = createSessionCache('attio-portfolio-cache-v1');
+
+// Backward-compatible exports
+export const getCachedDeals = () => dealsCache.get();
+export const setCachedDeals = (data) => dealsCache.set(data);
+export const getCachedCoverage = () => coverageCache.get();
+export const setCachedCoverage = (data) => coverageCache.set(data);
+export const getCachedDealFunnel = () => dealFunnelCache.get();
+export const setCachedDealFunnel = (data) => dealFunnelCache.set(data);
+export const getCachedLPs = () => lpsCache.get();
+export const setCachedLPs = (data) => lpsCache.set(data);
+export const getCachedPortfolio = () => portfolioCache.get();
+export const setCachedPortfolio = (data) => portfolioCache.set(data);
+
+// Clear all Attio caches — used by sync button
+export function clearAllCaches() {
+  dealsCache.clear();
+  coverageCache.clear();
+  dealFunnelCache.clear();
+  lpsCache.clear();
+  portfolioCache.clear();
 }
 
-// Coverage-specific session cache (separate from deals cache)
-const COVERAGE_CACHE_KEY = 'attio-coverage-cache';
+const SYNC_EVENT = 'attio-sync';
 
-export function getCachedCoverage() {
-  try {
-    const raw = sessionStorage.getItem(COVERAGE_CACHE_KEY);
-    if (!raw) return null;
-    const { data, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp > CACHE_TTL) {
-      sessionStorage.removeItem(COVERAGE_CACHE_KEY);
-      return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
+// Hook for data-fetching effects — returns a version counter that increments on sync
+export function useSyncTrigger() {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const handler = () => setV(n => n + 1);
+    window.addEventListener(SYNC_EVENT, handler);
+    return () => window.removeEventListener(SYNC_EVENT, handler);
+  }, []);
+  return v;
 }
 
-export function setCachedCoverage(data) {
-  try {
-    sessionStorage.setItem(COVERAGE_CACHE_KEY, JSON.stringify({
-      data,
-      timestamp: Date.now(),
-    }));
-  } catch {
-    // sessionStorage full or unavailable — ignore
-  }
+// Clear all caches and notify hooks to re-fetch
+export function triggerSync() {
+  clearAllCaches();
+  window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
 // Helper: extract a single attribute value from an Attio record
@@ -581,34 +619,7 @@ export function getLocationCountryCode(record, slug) {
   return attr[0].country_code || null;
 }
 
-// Deal funnel session cache
-const DEAL_FUNNEL_CACHE_KEY = 'attio-deal-funnel-cache-v3'; // v3: company-based universe
-
-export function getCachedDealFunnel() {
-  try {
-    const raw = sessionStorage.getItem(DEAL_FUNNEL_CACHE_KEY);
-    if (!raw) return null;
-    const { data, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp > CACHE_TTL) {
-      sessionStorage.removeItem(DEAL_FUNNEL_CACHE_KEY);
-      return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-export function setCachedDealFunnel(data) {
-  try {
-    sessionStorage.setItem(DEAL_FUNNEL_CACHE_KEY, JSON.stringify({
-      data,
-      timestamp: Date.now(),
-    }));
-  } catch {
-    // sessionStorage full or unavailable — ignore
-  }
-}
+// Deal funnel and LP/portfolio caches are now managed by the cache factory above
 
 // Helper: extract all values for a multi-value attribute (e.g. categories, tags)
 export function getAttrValues(record, slug) {

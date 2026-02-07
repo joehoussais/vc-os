@@ -6,6 +6,7 @@ import {
   extractCompanyFields,
   getCachedDealFunnel,
   setCachedDealFunnel,
+  useSyncTrigger,
 } from '../services/attioApi';
 import { TEAM_MAP } from '../data/team';
 
@@ -206,6 +207,7 @@ function computeEmailMetrics(companies) {
 
 // ─── The hook ────────────────────────────────────────────────────────
 export function useAttioCompanies() {
+  const syncVersion = useSyncTrigger();
   const cached = getCachedDealFunnel();
   const [data, setData] = useState(cached || null);
   const [loading, setLoading] = useState(!cached);
@@ -269,7 +271,7 @@ export function useAttioCompanies() {
 
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [syncVersion]);
 
   // Backward-compatible dealFlowData for DealAnalysis.jsx
   const dealFlowData = data ? {

@@ -107,7 +107,7 @@ function computeMarketScore(deal) {
   const isSeriesC = stage.includes('series c') || stage.includes('series d') || stage.includes('series e');
   const isSeriesB = stage.includes('series b');
 
-  if (totalFunding >= 1000 || isSeriesC && totalFunding >= 500) return 10; // Unicorn territory
+  if (totalFunding >= 1000 || (isSeriesC && totalFunding >= 500)) return 10; // Unicorn territory
   if (totalFunding >= 100 || isSeriesC) return 8;
   if (totalFunding >= 30 || isSeriesB) return 6;
   if (totalFunding >= 10 || roundAmount >= 10) return 4;
@@ -227,34 +227,31 @@ export default function Sourcing() {
   const effectiveFrom = filters.from || 'Q1 2022';
   const effectiveTo = filters.to || allQuarters[allQuarters.length - 1] || 'Q1 2026';
 
-  const filteredDeals = useMemo(() => {
+  // Base filtered set (without the show filter) — shared by filteredDeals and stats
+  const baseFiltered = useMemo(() => {
     const fromNum = quarterToNum(effectiveFrom);
     const toNum = quarterToNum(effectiveTo);
     return deals.filter(d => {
       if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
       if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
       if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return false;
-      if (filters.show === 'covered' && !isCovered(d)) return false;
-      if (filters.show === 'not_covered' && isCovered(d)) return false;
-      if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
-      return true;
-    }).sort((a, b) => new Date(b.announcedDate || 0) - new Date(a.announcedDate || 0));
-  }, [deals, filters, effectiveFrom, effectiveTo]);
-
-  const stats = useMemo(() => {
-    const fromNum = quarterToNum(effectiveFrom);
-    const toNum = quarterToNum(effectiveTo);
-    const filtered = deals.filter(d => {
-      if (filters.country !== 'all' && d.filterRegion !== filters.country) return false;
-      if (filters.stage !== 'all' && d.stage !== filters.stage) return false;
-      if (filters.owner !== 'all' && !d.ownerIds?.includes(filters.owner)) return false;
       if (d.date) { const dNum = quarterToNum(d.date); if (dNum < fromNum || dNum > toNum) return false; }
       return true;
     });
-    const coveredCount = filtered.filter(isCovered).length;
-    const coverage = filtered.length > 0 ? Math.round((coveredCount / filtered.length) * 100) : 0;
-    return { total: filtered.length, covered: coveredCount, coverage };
   }, [deals, filters, effectiveFrom, effectiveTo]);
+
+  const filteredDeals = useMemo(() => {
+    let result = baseFiltered;
+    if (filters.show === 'covered') result = result.filter(isCovered);
+    else if (filters.show === 'not_covered') result = result.filter(d => !isCovered(d));
+    return result.sort((a, b) => new Date(b.announcedDate || 0) - new Date(a.announcedDate || 0));
+  }, [baseFiltered, filters.show]);
+
+  const stats = useMemo(() => {
+    const coveredCount = baseFiltered.filter(isCovered).length;
+    const coverage = baseFiltered.length > 0 ? Math.round((coveredCount / baseFiltered.length) * 100) : 0;
+    return { total: baseFiltered.length, covered: coveredCount, coverage };
+  }, [baseFiltered]);
 
   const coverageByRegion = useMemo(() => calculateCoverageByRegion(deals), [deals]);
 

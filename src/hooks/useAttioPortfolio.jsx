@@ -1,33 +1,9 @@
 import { useState, useEffect } from 'react';
-import { extractCompanyFields } from '../services/attioApi';
+import { extractCompanyFields, fetchPortfolioCompanies, getCachedPortfolio, setCachedPortfolio, useSyncTrigger } from '../services/attioApi';
+import { BOARD_MEMBERS } from '../data/team';
 
-const CACHE_KEY = 'attio-portfolio-cache-v1';
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-
-const API_PATH = '/api/attio';
-
-async function attioQuery(endpoint, payload = {}) {
-  const res = await fetch(API_PATH, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint, payload, method: 'POST' }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Attio API error: ${res.status}`);
-  }
-  return res.json();
-}
-
-// Board member mapping — manually maintained
-// Each portfolio company maps to its board representatives from the RRW team
-export const BOARD_MEMBERS = [
-  { name: 'Joseph', color: '#E63424' },
-  { name: 'Luc-Emmanuel', color: '#6366F1' },
-  { name: 'Olivier', color: '#059669' },
-  { name: 'Antoine', color: '#D97706' },
-  { name: 'Alfred', color: '#8B5CF6' },
-];
+// Re-export for backward compatibility
+export { BOARD_MEMBERS };
 
 // Map company name (normalized) → board members
 // Names must match Attio company names or known aliases
@@ -69,125 +45,86 @@ function getBoardMembers(companyName) {
 }
 
 // Additional portfolio companies not in status_4=Portfolio
-// These will be fetched by name search
 const EXTRA_PORTFOLIO_NAMES = ['Veesion', 'Okeiro', 'Speach'];
 
 export function useAttioPortfolio() {
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isLive, setIsLive] = useState(false);
+  const syncVersion = useSyncTrigger();
+  const cached = getCachedPortfolio();
+  const [companies, setCompanies] = useState(cached || []);
+  const [loading, setLoading] = useState(!cached);
+  const [isLive, setIsLive] = useState(!!cached);
 
   useEffect(() => {
-    // Try cache first
-    const cached = sessionStorage.getItem(CACHE_KEY);
-    if (cached) {
+    let cancelled = false;
+
+    async function load(isBackground) {
+      if (!isBackground) setLoading(true);
       try {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < CACHE_TTL) {
-          setCompanies(data);
-          setLoading(false);
-          setIsLive(true);
-          // Still refresh in background
-          fetchPortfolio(true);
-          return;
-        }
-      } catch (e) { /* ignore */ }
-    }
+        const allRecords = await fetchPortfolioCompanies(EXTRA_PORTFOLIO_NAMES);
+        if (cancelled) return;
 
-    fetchPortfolio(false);
-  }, []);
+        // Transform records
+        const transformed = allRecords.map(record => {
+          const base = extractCompanyFields(record);
+          if (!base) return null;
 
-  async function fetchPortfolio(isBackground) {
-    if (!isBackground) setLoading(true);
-    try {
-      // Step 1: Fetch all companies with status_4 = Portfolio
-      const portfolioData = await attioQuery('/objects/companies/records/query', {
-        filter: { status_4: { $eq: 'Portfolio' } },
-        limit: 50,
-      });
+          const v = record.values || {};
 
-      let allRecords = portfolioData.data || [];
+          const description = v.description?.[0]?.value || null;
+          const lastFundingAmount = v.last_funding_amount?.[0]?.value || null;
+          const totalFundingRaw = v.total_funding_amount?.[0]?.value
+            || v.total_funding_amount?.[0]?.currency_value || null;
+          const totalFunding = formatFunding(totalFundingRaw);
+          const lastFundingStatus = v.last_funding_status_46?.[0]?.option?.title
+            || v.last_funding_status_46?.[0]?.status?.title || null;
+          const employeeRange = v.employee_range?.[0]?.value
+            || v.employee_range?.[0]?.option?.title || null;
+          const foundationDate = v.foundation_date?.[0]?.value || null;
+          const categories = (v.categories || []).map(c => c.value || c.option?.title).filter(Boolean);
+          const tags = (v.tags || []).map(t => t.value || t.option?.title).filter(Boolean);
 
-      // Step 2: Search for extra portfolio companies by name
-      for (const name of EXTRA_PORTFOLIO_NAMES) {
-        try {
-          const searchData = await attioQuery('/objects/companies/records/query', {
-            filter: {
-              name: { $contains: name },
-            },
-            limit: 5,
-          });
-          const results = searchData.data || [];
-          // Find exact or closest match
-          const match = results.find(r => {
-            const n = r.values?.name?.[0]?.value?.toLowerCase() || '';
-            return n === name.toLowerCase() || n.startsWith(name.toLowerCase());
-          });
-          if (match && !allRecords.find(r => r.id?.record_id === match.id?.record_id)) {
-            allRecords.push(match);
+          let logoUrl = v.logo_url?.[0]?.value || null;
+          if (!logoUrl && base.domain) {
+            logoUrl = `https://logo.clearbit.com/${base.domain}`;
           }
-        } catch (e) {
-          console.warn(`Could not fetch extra portfolio company: ${name}`, e);
+
+          return {
+            ...base,
+            logoUrl,
+            description,
+            lastFundingAmount,
+            totalFunding,
+            totalFundingRaw: totalFundingRaw ? parseFloat(totalFundingRaw) : null,
+            lastFundingStatus,
+            employeeRange,
+            foundationDate,
+            categories,
+            tags,
+            boardMembers: getBoardMembers(base.name),
+          };
+        }).filter(Boolean);
+
+        if (!cancelled) {
+          setCompanies(transformed);
+          setIsLive(true);
+          setCachedPortfolio(transformed);
         }
+      } catch (err) {
+        console.error('Failed to fetch portfolio from Attio:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      // Step 3: Transform records
-      const transformed = allRecords.map(record => {
-        const base = extractCompanyFields(record);
-        if (!base) return null;
-
-        const v = record.values || {};
-
-        // Extract additional fields
-        const description = v.description?.[0]?.value || null;
-        const lastFundingAmount = v.last_funding_amount?.[0]?.value || null;
-        const totalFundingRaw = v.total_funding_amount?.[0]?.value
-          || v.total_funding_amount?.[0]?.currency_value || null;
-        const totalFunding = formatFunding(totalFundingRaw);
-        const lastFundingStatus = v.last_funding_status_46?.[0]?.option?.title
-          || v.last_funding_status_46?.[0]?.status?.title || null;
-        const employeeRange = v.employee_range?.[0]?.value
-          || v.employee_range?.[0]?.option?.title || null;
-        const foundationDate = v.foundation_date?.[0]?.value || null;
-        const categories = (v.categories || []).map(c => c.value || c.option?.title).filter(Boolean);
-        const tags = (v.tags || []).map(t => t.value || t.option?.title).filter(Boolean);
-
-        // Build logo URL — try logo_url first, then construct from domain
-        let logoUrl = v.logo_url?.[0]?.value || null;
-        if (!logoUrl && base.domain) {
-          logoUrl = `https://logo.clearbit.com/${base.domain}`;
-        }
-
-        return {
-          ...base,
-          logoUrl,
-          description,
-          lastFundingAmount,
-          totalFunding,
-          totalFundingRaw: totalFundingRaw ? parseFloat(totalFundingRaw) : null,
-          lastFundingStatus,
-          employeeRange,
-          foundationDate,
-          categories,
-          tags,
-          boardMembers: getBoardMembers(base.name),
-        };
-      }).filter(Boolean);
-
-      setCompanies(transformed);
-      setIsLive(true);
-
-      // Cache
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-        data: transformed,
-        ts: Date.now(),
-      }));
-    } catch (err) {
-      console.error('Failed to fetch portfolio from Attio:', err);
-    } finally {
-      setLoading(false);
     }
-  }
+
+    if (cached) {
+      // Still refresh in background
+      load(true);
+    } else {
+      load(false);
+    }
+
+    return () => { cancelled = true; };
+  }, [syncVersion]);
 
   return { companies, loading, isLive };
 }

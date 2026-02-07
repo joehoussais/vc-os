@@ -2,67 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   fetchDealsByIds, fetchCompaniesByIds, fetchListEntries,
   getAttrValue, getAttrValues, getEntryValue, getLocationCountryCode,
-  getCachedCoverage, setCachedCoverage,
+  getCachedCoverage, setCachedCoverage, useSyncTrigger,
 } from '../services/attioApi';
 import { getSlackSignal, OUTCOME_OVERRIDES } from '../data/slackSignals';
-
-// Country code to region mapping
-const countryToRegion = {
-  'FR': 'France', 'DE': 'Germany', 'NL': 'Netherlands', 'BE': 'Belgium',
-  'SE': 'Sweden', 'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland',
-  'ES': 'Spain', 'IT': 'Italy', 'PT': 'Portugal', 'PL': 'Poland',
-  'CZ': 'Czech Republic', 'AT': 'Austria', 'CH': 'Switzerland',
-  'IE': 'Ireland', 'GB': 'UK', 'UK': 'UK',
-};
-
-const countryToFilterRegion = {
-  'FR': 'France',
-  'DE': 'Germany', 'NL': 'Germany', 'BE': 'Germany', 'LU': 'Germany',
-  'SE': 'Nordics', 'NO': 'Nordics', 'DK': 'Nordics', 'FI': 'Nordics', 'IS': 'Nordics',
-  'ES': 'Southern Europe', 'IT': 'Southern Europe', 'PT': 'Southern Europe', 'GR': 'Southern Europe',
-  'PL': 'Eastern Europe', 'CZ': 'Eastern Europe', 'HU': 'Eastern Europe',
-  'RO': 'Eastern Europe', 'BG': 'Eastern Europe', 'SK': 'Eastern Europe',
-  'SI': 'Eastern Europe', 'HR': 'Eastern Europe', 'RS': 'Eastern Europe',
-  'UA': 'Eastern Europe', 'EE': 'Eastern Europe', 'LV': 'Eastern Europe', 'LT': 'Eastern Europe',
-};
-
-const fundingStatusToStage = {
-  'pre_seed': 'Pre-Seed', 'seed': 'Seed',
-  'series_a': 'Series A', 'series_b': 'Series B', 'series_c': 'Series C',
-  'series_d': 'Series D', 'series_e': 'Series E', 'series_f': 'Series F',
-  'series_unknown': 'Unknown', 'venture_round': 'Venture',
-  'corporate_round': 'Corporate', 'private_equity': 'PE', 'angel': 'Angel',
-};
-
-function parseStageFromDealId(dealId) {
-  if (!dealId) return null;
-  const match = dealId.match(/^(Series [A-Z]|Seed|Pre-Seed|Venture|Grant|Private Equity|Corporate)/i);
-  if (!match) return null;
-  const stage = match[1];
-  if (stage.toLowerCase().includes('series')) {
-    return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase().replace('series ', 'Series ');
-  }
-  return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase();
-}
-
-function formatAmount(amount) {
-  if (!amount) return null;
-  // amount is in base currency (e.g., 64649976 for €64.6M) → convert to millions
-  if (typeof amount === 'number') return Math.round(amount / 1000000);
-  const numMatch = String(amount).match(/[\d,]+/);
-  if (!numMatch) return null;
-  const num = parseFloat(numMatch[0].replace(/,/g, ''));
-  if (isNaN(num)) return null;
-  return Math.round(num / 1000000);
-}
-
-function dateToQuarter(dateStr) {
-  if (!dateStr) return null;
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return null;
-  const quarter = Math.ceil((date.getMonth() + 1) / 3);
-  return `Q${quarter} ${date.getFullYear()}`;
-}
+import { countryToRegion, countryToFilterRegion, fundingStatusToStage, parseStageFromDealId, formatAmount, dateToQuarter } from '../data/geography';
 
 /**
  * useAttioCoverage — coverage-first sourcing universe.
@@ -73,6 +16,7 @@ function dateToQuarter(dateStr) {
  * Output shape matches useAttioDeals for UI compatibility.
  */
 export function useAttioCoverage() {
+  const syncVersion = useSyncTrigger();
   const cached = getCachedCoverage();
   const [companies, setCompanies] = useState(cached || []);
   const [loading, setLoading] = useState(!cached);
@@ -324,7 +268,7 @@ export function useAttioCoverage() {
 
     load();
     return () => { cancelled = true; };
-  }, [processData]);
+  }, [processData, syncVersion]);
 
   // Return as "deals" for backward-compat with Sourcing.jsx
   return { deals: companies, loading, error, isLive };

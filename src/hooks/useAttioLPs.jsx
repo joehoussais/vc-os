@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAllLPs, getAttrValue, getAttrValues } from '../services/attioApi';
-
-const CACHE_KEY = 'attio-lps-cache';
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+import { fetchAllLPs, getAttrValue, getAttrValues, getCachedLPs, setCachedLPs, useSyncTrigger } from '../services/attioApi';
 
 // Fund definitions — each fund has its own status and amount fields in Attio
 export const FUNDS = [
@@ -50,50 +47,8 @@ export const FUND2_STAGES = [
   { id: 'invested', name: 'Fund II Investors', attioValues: ['Fund II LP'], weight: 1.0 },
 ];
 
-// Team members (same as DealFunnel)
-export const LP_TEAM_MEMBERS = [
-  { id: '93d8a2b8-e953-4c1d-bc62-2a57e5e8e481', name: 'Abel' },
-  { id: 'fae2196e-dfb6-4edb-a279-adf24b1e151e', name: 'Max' },
-  { id: '82cfb7fc-f667-467d-97db-f5459047eeb6', name: 'Olivier' },
-  { id: '7acbe6c2-21e1-4346-bcff-0ce4797d6e88', name: 'Joseph' },
-  { id: '132dcc71-5c7a-41fa-a94c-aa9858d6cea3', name: 'Chloé' },
-  { id: '64d84369-bb20-4b9e-b313-69f423e24438', name: 'Alessandro' },
-  { id: '190fc1b3-2b0e-40b9-b1d3-3036ab9b936f', name: 'Thomas' },
-  { id: 'e330fcd0-65a3-42ac-9b25-b0035cd175d2', name: 'Antoine' },
-  { id: 'e7f8f60f-b83f-45a5-89b7-5650e3c2b4ea', name: 'Alfred' },
-  { id: '2f31b424-0e2e-4f97-beb0-8facf25077a3', name: 'Luc-Emmanuel' },
-  { id: '58d63f40-928b-49b9-bdca-2336a0b2b6bc', name: 'Bertrand' },
-  { id: '673a35f2-c184-48dc-9dc5-0e5114980f7e', name: 'Bettina' },
-];
-
-export const LP_TEAM_MAP = {};
-LP_TEAM_MEMBERS.forEach(m => { LP_TEAM_MAP[m.id] = m.name; });
-
-function getCachedLPs() {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const { data, timestamp } = JSON.parse(raw);
-    if (Date.now() - timestamp > CACHE_TTL) {
-      sessionStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-function setCachedLPs(lps) {
-  try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-      data: lps,
-      timestamp: Date.now(),
-    }));
-  } catch {
-    // ignore
-  }
-}
+// Re-export team data from canonical source for backward compatibility
+export { EXTENDED_TEAM_MEMBERS as LP_TEAM_MEMBERS, EXTENDED_TEAM_MAP as LP_TEAM_MAP } from '../data/team';
 
 // Helper to extract currency value from Attio currency attribute
 function getCurrencyValue(record, slug) {
@@ -115,6 +70,7 @@ function getRatingValue(record, slug) {
 }
 
 export function useAttioLPs() {
+  const syncVersion = useSyncTrigger();
   const cached = getCachedLPs();
   const [lps, setLPs] = useState(cached || []);
   const [loading, setLoading] = useState(!cached);
@@ -231,7 +187,7 @@ export function useAttioLPs() {
 
     load();
     return () => { cancelled = true; };
-  }, [processLPs]);
+  }, [processLPs, syncVersion]);
 
   return { lps, loading, error, isLive };
 }

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Toast from './components/Toast';
 import { useAuth, LoginScreen } from './components/Auth';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { triggerSync } from './services/attioApi';
 import { ThemeProvider } from './hooks/useTheme.jsx';
 
 // Pages
@@ -14,7 +16,6 @@ import Portfolio from './pages/Portfolio';
 
 function AppContent() {
   const { user, loading, login, logout, error } = useAuth();
-  const [activeTab, setActiveTab] = useState('coverage');
   const [toast, setToast] = useState({ show: false, message: '' });
 
   // Persistent state
@@ -29,8 +30,8 @@ function AppContent() {
   };
 
   const handleSync = () => {
-    showToast('Syncing...');
-    setTimeout(() => showToast('Data synced!'), 1000);
+    triggerSync();
+    showToast('Syncing — re-fetching all data...');
   };
 
   // Show loading state
@@ -50,39 +51,26 @@ function AppContent() {
     return <LoginScreen onLogin={login} error={error} />;
   }
 
-  const renderTab = () => {
-    switch (activeTab) {
-      case 'lp-pipeline':
-        return <LPPipeline />;
-      case 'coverage':
-        return <Sourcing />;
-      case 'deal-funnel':
-        return <DealFunnel setActiveTab={setActiveTab} />;
-      case 'deal-analysis':
-        return (
-          <DealAnalysis
-            meetingRatings={meetingRatings}
-            setMeetingRatings={setMeetingRatings}
-            showToast={showToast}
-          />
-        );
-      case 'portfolio':
-        return <Portfolio />;
-      default:
-        return <Sourcing />;
-    }
-  };
-
   return (
     <>
-      <Layout
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onSync={handleSync}
-        user={user}
-        onLogout={logout}
-      >
-        {renderTab()}
+      <Layout onSync={handleSync} user={user} onLogout={logout}>
+        <Routes>
+          <Route path="/lp-pipeline" element={<LPPipeline />} />
+          <Route path="/coverage" element={<Sourcing />} />
+          <Route path="/deal-funnel" element={<DealFunnel />} />
+          <Route
+            path="/deal-analysis"
+            element={
+              <DealAnalysis
+                meetingRatings={meetingRatings}
+                setMeetingRatings={setMeetingRatings}
+                showToast={showToast}
+              />
+            }
+          />
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="*" element={<Navigate to="/coverage" replace />} />
+        </Routes>
       </Layout>
       <Toast message={toast.message} show={toast.show} onHide={hideToast} />
     </>

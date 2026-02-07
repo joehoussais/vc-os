@@ -1,11 +1,12 @@
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme.jsx';
 
 const tabs = [
-  { id: 'lp-pipeline', label: 'LP Pipeline' },
-  { id: 'coverage', label: 'Coverage' },
-  { id: 'deal-funnel', label: 'Deal Flow Pipeline' },
-  { id: 'deal-analysis', label: 'Deal Analysis' },
-  { id: 'portfolio', label: 'Portfolio' },
+  { path: '/lp-pipeline', label: 'LP Pipeline' },
+  { path: '/coverage', label: 'Coverage' },
+  { path: '/deal-funnel', label: 'Deal Flow Pipeline' },
+  { path: '/deal-analysis', label: 'Deal Analysis' },
+  { path: '/portfolio', label: 'Portfolio' },
 ];
 
 function ThemeToggle() {
@@ -48,8 +49,10 @@ function UserMenu({ user, onLogout }) {
   );
 }
 
-export default function Layout({ children, activeTab, setActiveTab, onSync, user, onLogout }) {
+export default function Layout({ children, onSync, user, onLogout }) {
   const { theme } = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-[var(--bg-secondary)] bg-knot-pattern">
@@ -96,24 +99,27 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, user
       <nav className="bg-[var(--bg-secondary)] border-b border-[var(--border-default)] relative z-10">
         <div className="max-w-[1440px] mx-auto px-5">
           <div className="flex items-center gap-0.5 -mb-px">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  relative h-10 px-3 text-[13px] transition-all duration-150 rounded-md
-                  ${activeTab === tab.id
-                    ? 'text-[var(--text-primary)] font-semibold'
-                    : 'text-[var(--text-tertiary)] font-medium hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-                  }
-                `}
-              >
-                {tab.label}
-                {activeTab === tab.id && (
-                  <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--rrw-red)] rounded-full" />
-                )}
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              const isActive = location.pathname === tab.path;
+              return (
+                <button
+                  key={tab.path}
+                  onClick={() => navigate(tab.path)}
+                  className={`
+                    relative h-10 px-3 text-[13px] transition-all duration-150 rounded-md
+                    ${isActive
+                      ? 'text-[var(--text-primary)] font-semibold'
+                      : 'text-[var(--text-tertiary)] font-medium hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                    }
+                  `}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--rrw-red)] rounded-full" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </nav>

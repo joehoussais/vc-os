@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAttioCompanies, FUNNEL_STAGES, SOURCE_CHANNELS } from '../hooks/useAttioCompanies';
 import { TEAM_MEMBERS, TEAM_MAP } from '../data/team';
 
@@ -34,7 +35,8 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-export default function DealFunnel({ setActiveTab }) {
+export default function DealFunnel() {
+  const navigate = useNavigate();
   const { funnelData, loading, isLive } = useAttioCompanies();
 
   const [filters, setFilters] = useState({
@@ -388,9 +390,9 @@ export default function DealFunnel({ setActiveTab }) {
                             {stage.description}
                             {stage.currentCount > 0 && ` · ${stage.currentCount} currently here`}
                           </div>
-                          {setActiveTab && (
+                          {(
                             <button
-                              onClick={(e) => { e.stopPropagation(); setActiveTab('deal-analysis'); }}
+                              onClick={(e) => { e.stopPropagation(); navigate('/deal-analysis'); }}
                               className="text-[10px] mt-1 hover:underline"
                               style={{ color: 'var(--rrw-red)' }}
                             >
@@ -454,9 +456,9 @@ export default function DealFunnel({ setActiveTab }) {
                         }
                         {stage.totalAmount > 0 && ` · ${stage.totalAmount.toFixed(0)}M€ raised`}
                       </div>
-                      {DEAL_ANALYSIS_STAGES.has(stage.id) && setActiveTab && (
+                      {DEAL_ANALYSIS_STAGES.has(stage.id) && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setActiveTab('deal-analysis'); }}
+                          onClick={(e) => { e.stopPropagation(); navigate('/deal-analysis'); }}
                           className="text-[10px] mt-1 hover:underline"
                           style={{ color: 'var(--rrw-red)' }}
                         >
@@ -648,7 +650,6 @@ export default function DealFunnel({ setActiveTab }) {
         <StageDetailPanel
           stage={selectedStageData}
           stageId={selectedStage}
-          setActiveTab={setActiveTab}
           onClose={() => setSelectedStage(null)}
         />
       )}
@@ -657,7 +658,8 @@ export default function DealFunnel({ setActiveTab }) {
 }
 
 // ─── Stage Detail Panel ──────────────────────────────────────────────
-function StageDetailPanel({ stage, stageId, setActiveTab, onClose }) {
+function StageDetailPanel({ stage, stageId, onClose }) {
+  const navigate = useNavigate();
   const isTopFunnel = TOP_FUNNEL_STAGES.has(stageId);
   return (
     <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
@@ -670,9 +672,9 @@ function StageDetailPanel({ stage, stageId, setActiveTab, onClose }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {DEAL_ANALYSIS_STAGES.has(stageId) && setActiveTab && (
+          {DEAL_ANALYSIS_STAGES.has(stageId) && (
             <button
-              onClick={() => setActiveTab('deal-analysis')}
+              onClick={() => navigate('/deal-analysis')}
               className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--rrw-red)] hover:bg-[var(--rrw-red-subtle)] transition-colors"
               style={{ color: 'var(--rrw-red)' }}
             >
