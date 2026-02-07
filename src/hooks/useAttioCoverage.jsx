@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  fetchOwnedCompanies, fetchAllDeals, fetchListEntries,
+  fetchAllDeals, fetchCompaniesByIds, fetchListEntries,
   getAttrValue, getAttrValues, getEntryValue, getLocationCountryCode,
   getCachedCoverage, setCachedCoverage,
 } from '../services/attioApi';
@@ -110,10 +110,10 @@ function redistributeBulkDates(items) {
 }
 
 /**
- * useAttioCoverage — company-first sourcing universe.
+ * useAttioCoverage — deal-based sourcing universe.
  *
- * Primary: all companies with owner set (~2000+)
- * Enriched with: deals (deal names, announced dates, status) + coverage list entries (in_scope)
+ * Primary: all deals from deals_2 + coverage list entries from deal_coverage_6
+ * Enriched with: linked companies (fetched by ID)
  *
  * Output shape matches useAttioDeals for UI compatibility.
  */
@@ -124,23 +124,7 @@ export function useAttioCoverage() {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(!!cached);
 
-  const processData = useCallback((rawCompanies, rawDeals, listEntries) => {
-    // Build deal → company map (company record ID → best deal)
-    const dealsByCompanyId = {};
-    for (const deal of rawDeals) {
-      const companyRecordId = deal.values?.associated_company_domain?.[0]?.target_record_id;
-      if (!companyRecordId) continue;
-      // Keep the deal with the most recent announced_date
-      const existing = dealsByCompanyId[companyRecordId];
-      if (!existing) {
-        dealsByCompanyId[companyRecordId] = deal;
-      } else {
-        const existingDate = getAttrValue(existing, 'announced_date') || '';
-        const newDate = getAttrValue(deal, 'announced_date') || '';
-        if (newDate > existingDate) dealsByCompanyId[companyRecordId] = deal;
-      }
-    }
-
+  const processData = useCallback((rawDeals, companiesMap, listEntries) => {
     // Build coverage map: deal record ID → list entry
     const coverageMap = {};
     for (const entry of listEntries) {
@@ -148,44 +132,44 @@ export function useAttioCoverage() {
       if (dealId) coverageMap[dealId] = entry;
     }
 
-    const result = rawCompanies.map(company => {
-      const companyRecordId = company.id?.record_id;
-      const companyName = getAttrValue(company, 'name') || 'Unknown';
-
-      // Linked deal (if any)
-      const deal = dealsByCompanyId[companyRecordId];
-      const dealRecordId = deal?.id?.record_id;
-      const dealName = deal ? getAttrValue(deal, 'deal_id') : null;
-      const dealStatus = deal ? getAttrValue(deal, 'status') : null;
-
-      // Best date: deal announced_date > deal received_date > company created_at
-      const announcedDate = deal ? getAttrValue(deal, 'announced_date') : null;
-      const receivedDate = deal ? getAttrValue(deal, 'received_date') : null;
-      const createdAt = getAttrValue(company, 'created_at');
+    const result = rawDeals.map(deal => {
+      const dealRecordId = deal.id?.record_id;
+      const dealName = getAttrValue(deal, 'deal_id');
+      const dealStatus = getAttrValue(deal, 'status');
+      const announcedDate = getAttrValue(deal, 'announced_date');
+      const receivedDate = getAttrValue(deal, 'received_date');
+      const createdAt = getAttrValue(deal, 'created_at');
       const bestDate = announcedDate || receivedDate || (createdAt ? createdAt.slice(0, 10) : null);
 
-      // Country
-      const countryCode = getLocationCountryCode(company, 'primary_location') ||
-        getAttrValue(company, 'cross_checked_hq_country')?.slice(0, 2)?.toUpperCase();
-      const country = countryToRegion[countryCode] || getAttrValue(company, 'team_country') || 'Unknown';
+      // Get linked company
+      const companyRecordId = deal.values?.associated_company_domain?.[0]?.target_record_id;
+      const company = companyRecordId ? companiesMap[companyRecordId] : null;
+
+      // Company fields
+      const companyName = company ? getAttrValue(company, 'name') : (dealName?.split(' - ').pop() || 'Unknown');
+      const countryCode = company
+        ? (getLocationCountryCode(company, 'primary_location') ||
+           getAttrValue(company, 'cross_checked_hq_country')?.slice(0, 2)?.toUpperCase())
+        : null;
+      const country = countryToRegion[countryCode] || (company ? getAttrValue(company, 'team_country') : null) || 'Unknown';
       const filterRegion = countryToFilterRegion[countryCode] || 'Other';
 
       // Stage
       const stageFromDeal = parseStageFromDealId(dealName);
-      const stageFromCompany = fundingStatusToStage[getAttrValue(company, 'last_funding_status_46')] || null;
+      const stageFromCompany = company ? fundingStatusToStage[getAttrValue(company, 'last_funding_status_46')] : null;
       const stage = stageFromDeal || stageFromCompany || 'Unknown';
 
       // Company status
-      const companyStatus = getAttrValue(company, 'status_4');
+      const companyStatus = company ? getAttrValue(company, 'status_4') : null;
 
-      // Coverage list entry (linked through deal, if exists)
-      const coverage = dealRecordId ? coverageMap[dealRecordId] : null;
+      // Coverage list entry
+      const coverage = coverageMap[dealRecordId];
       const coverageEntryId = coverage?.entry_id || null;
       const coverageInScope = coverage ? !!getEntryValue(coverage, 'in_scope') : false;
 
       // Interaction data from company
-      const firstEmailInteraction = getAttrValue(company, 'first_email_interaction');
-      const firstCalendarInteraction = getAttrValue(company, 'first_calendar_interaction');
+      const firstEmailInteraction = company ? getAttrValue(company, 'first_email_interaction') : null;
+      const firstCalendarInteraction = company ? getAttrValue(company, 'first_calendar_interaction') : null;
       const hasEmailInteraction = !!firstEmailInteraction;
       const hasCalendarInteraction = !!firstCalendarInteraction;
 
@@ -202,14 +186,14 @@ export function useAttioCoverage() {
 
       const seen = statusSeen || companyProgressed || hasEmailInteraction || hasCalendarInteraction || !!receivedDate;
 
-      // In scope — defaults to true if no coverage entry
-      const inScope = coverage ? coverageInScope : true;
+      // In scope from coverage list — defaults to false if not in list
+      const inScope = coverage ? coverageInScope : false;
 
-      // Amount
+      // Amount — coverage list stores in M€ already
       const coverageAmount = coverage ? getEntryValue(coverage, 'amount_raised_in_meu') : null;
       const amount = coverageAmount != null
         ? Math.round(coverageAmount)
-        : formatAmount(getAttrValue(company, 'last_funding_amount'));
+        : (company ? formatAmount(getAttrValue(company, 'last_funding_amount')) : null);
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
       // Outcome
@@ -225,26 +209,26 @@ export function useAttioCoverage() {
       }
 
       // Industry
-      const dealIndustry = deal ? getAttrValues(deal, 'industry') : [];
-      const categories = dealIndustry.length > 0 ? dealIndustry : getAttrValues(company, 'categories');
+      const dealIndustry = getAttrValues(deal, 'industry');
+      const categories = dealIndustry.length > 0 ? dealIndustry : (company ? getAttrValues(company, 'categories') : []);
 
       // Feeling / rating
-      const feeling = getAttrValue(company, 'feeling');
+      const feeling = company ? getAttrValue(company, 'feeling') : null;
 
-      // Owner (actor-reference multiselect)
-      const ownerAttr = company?.values?.owner;
+      // Owner from deal
+      const ownerAttr = deal.values?.owner;
       const ownerIds = ownerAttr ? ownerAttr.map(o => o.referenced_actor_id).filter(Boolean) : [];
 
       // Extra fields
-      const reasonsToDecline = getAttrValue(company, 'reasons_to_decline');
-      const dealComment = deal ? getAttrValue(deal, 'comment') : null;
-      const fundingRaisedUsd = getAttrValue(company, 'funding_raised_usd');
-      const lastFundingStatus = getAttrValue(company, 'last_funding_status_46');
-      const lastFundingDate = getAttrValue(company, 'last_funding_date');
-      const companyDescription = getAttrValue(company, 'description');
+      const reasonsToDecline = company ? getAttrValue(company, 'reasons_to_decline') : null;
+      const dealComment = getAttrValue(deal, 'comment');
+      const fundingRaisedUsd = company ? getAttrValue(company, 'funding_raised_usd') : null;
+      const lastFundingStatus = company ? getAttrValue(company, 'last_funding_status_46') : null;
+      const lastFundingDate = company ? getAttrValue(company, 'last_funding_date') : null;
+      const companyDescription = company ? getAttrValue(company, 'description') : null;
 
       return {
-        id: companyRecordId,
+        id: dealRecordId,
         coverageEntryId,
         coverageInScope,
         dealName: dealName || companyName,
@@ -267,11 +251,11 @@ export function useAttioCoverage() {
         outcome,
         ownerIds,
         receivedDate,
-        logoUrl: getAttrValue(company, 'logo_url'),
+        logoUrl: company ? getAttrValue(company, 'logo_url') : null,
         description: companyDescription,
-        linkedinUrl: getAttrValue(company, 'linkedin'),
-        totalFunding: getAttrValue(company, 'total_funding_amount'),
-        employeeRange: getAttrValue(company, 'employee_range'),
+        linkedinUrl: company ? getAttrValue(company, 'linkedin') : null,
+        totalFunding: company ? getAttrValue(company, 'total_funding_amount') : null,
+        employeeRange: company ? getAttrValue(company, 'employee_range') : null,
         reasonsToDecline,
         dealComment,
         fundingRaisedUsd,
@@ -290,15 +274,31 @@ export function useAttioCoverage() {
       try {
         if (!cached) setLoading(true);
 
-        // Fetch all three data sources in parallel
-        const [rawCompanies, rawDeals, listEntries] = await Promise.all([
-          fetchOwnedCompanies(),
+        // Fetch deals and coverage list entries in parallel
+        const [rawDeals, listEntries] = await Promise.all([
           fetchAllDeals(),
           fetchListEntries(),
         ]);
         if (cancelled) return;
 
-        const processed = processData(rawCompanies, rawDeals, listEntries);
+        // Extract unique company IDs from deals
+        const companyIds = [...new Set(
+          rawDeals
+            .map(d => d.values?.associated_company_domain?.[0]?.target_record_id)
+            .filter(Boolean)
+        )];
+
+        // Fetch linked companies
+        const rawCompanies = await fetchCompaniesByIds(companyIds);
+        if (cancelled) return;
+
+        // Build companies lookup
+        const companiesMap = {};
+        for (const c of rawCompanies) {
+          companiesMap[c.id?.record_id] = c;
+        }
+
+        const processed = processData(rawDeals, companiesMap, listEntries);
 
         if (!cancelled && processed.length > 0) {
           setCompanies(processed);
