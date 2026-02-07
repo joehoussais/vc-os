@@ -119,19 +119,6 @@ export function useAttioCoverage() {
       const hasEmailInteraction = !!firstEmailInteraction;
       const hasCalendarInteraction = !!firstCalendarInteraction;
 
-      // Derive "seen" from multiple signals
-      const statusSeen = dealStatus === 'deal flow' ||
-        dealStatus === 'Announced deals we saw' ||
-        dealStatus === 'deal rumors';
-
-      const companyProgressed = companyStatus && [
-        'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
-        'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
-        'Passed', 'Analysed but too early', 'To Decline'
-      ].includes(companyStatus);
-
-      const seen = statusSeen || companyProgressed || hasEmailInteraction || hasCalendarInteraction || !!receivedDate;
-
       // All deals here are in scope (we filtered the coverage list for in_scope=true)
       const inScope = true;
 
@@ -143,25 +130,39 @@ export function useAttioCoverage() {
       const dealScore = coverage ? getEntryValue(coverage, 'deal_score') : null;
 
       // ── Reception label (best → worst) ──────────────────────
+      // Outcome is the SINGLE source of truth. "Seen" derives from it.
+      //
+      // Internal signals used to determine outcome:
+      const statusSeen = dealStatus === 'deal flow' ||
+        dealStatus === 'Announced deals we saw' ||
+        dealStatus === 'deal rumors';
+      const companyProgressed = companyStatus && [
+        'Contacted / to meet', 'Met', 'To nurture', 'Dealflow',
+        'Due Dilligence', 'Due Diligence', 'IC', 'Portfolio',
+        'Passed', 'Analysed but too early', 'To Decline'
+      ].includes(companyStatus);
+      const hadContact = hasEmailInteraction || hasCalendarInteraction ||
+        companyStatus === 'Contacted / to meet' || companyStatus === 'Met';
+      const anySeen = statusSeen || companyProgressed || hasEmailInteraction || hasCalendarInteraction || !!receivedDate;
+
       let outcome = 'Completely Missed';
 
       if (companyStatus === 'Portfolio') {
         outcome = 'Invested';
       } else if (companyStatus === 'IC') {
-        // Went to IC but didn't invest = outcompeted
         outcome = 'Analysed & Lost';
       } else if (['Passed', 'To Decline', 'Analysed but too early',
                    'No US path for now', 'Due Dilligence', 'Due Diligence'].includes(companyStatus)) {
         outcome = 'Analysed & Passed';
-      } else if (seen && (hasEmailInteraction || hasCalendarInteraction ||
-                 companyStatus === 'Contacted / to meet' || companyStatus === 'Met')) {
-        // We actively reached out or met them but no formal analysis
+      } else if (anySeen && hadContact) {
         outcome = 'Tried, No Response';
-      } else if (seen) {
-        // We knew about it but didn't reach out
+      } else if (anySeen) {
         outcome = "Saw, Didn't Try";
       }
       // else stays 'Completely Missed'
+
+      // "Seen" = anything that isn't Completely Missed
+      const seen = outcome !== 'Completely Missed';
 
       // Industry
       const dealIndustry = getAttrValues(deal, 'industry');

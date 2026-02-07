@@ -407,9 +407,9 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
           <FilterSelect label="Stage" value={filters.stage} onChange={(v) => setFilters({ ...filters, stage: v })} options={[{ value: 'all', label: 'All Stages' }, { value: 'Pre-Seed', label: 'Pre-Seed' }, { value: 'Seed', label: 'Seed' }, { value: 'Series A', label: 'Series A' }, { value: 'Series B', label: 'Series B' }, { value: 'Series C', label: 'Series C' }, { value: 'Venture', label: 'Venture' }]} />
           <FilterSelect label="From" value={effectiveFrom} onChange={(v) => setFilters({ ...filters, from: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
           <FilterSelect label="To" value={effectiveTo} onChange={(v) => setFilters({ ...filters, to: v })} options={allQuarters.map(q => ({ value: q, label: q }))} />
-          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Companies' }, { value: 'seen', label: 'Seen Only' }, { value: 'missed', label: 'Missed Only' }]} />
+          <FilterSelect label="Show" value={filters.show} onChange={(v) => setFilters({ ...filters, show: v })} options={[{ value: 'all', label: 'All Companies' }, { value: 'seen', label: 'Covered (not missed)' }, { value: 'missed', label: 'Completely Missed' }]} />
           <div className="ml-auto flex items-center gap-4 text-[13px]">
-            <span className="text-[var(--text-tertiary)]">{stats.total} companies · {stats.seen} seen</span>
+            <span className="text-[var(--text-tertiary)]">{stats.total} companies · {stats.seen} covered</span>
             <span className="px-2 py-1 rounded-md bg-[var(--rrw-red-subtle)] text-[var(--rrw-red)] font-semibold">{stats.coverage}% coverage</span>
           </div>
         </div>
@@ -432,9 +432,10 @@ function OverviewTab({ deals, filteredDeals, filters, setFilters, effectiveFrom,
           <div className="flex items-center justify-between mb-3">
             <div><h3 className="font-semibold text-[var(--text-primary)]">Company Coverage</h3><p className="text-xs text-[var(--text-tertiary)]">{filteredDeals.length} companies</p></div>
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-[var(--text-quaternary)] mb-2 px-3">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Seen</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-blue-500/40 inline-block" /> In Scope</span>
+          <div className="flex items-center gap-3 text-[10px] text-[var(--text-quaternary)] mb-2 px-3 flex-wrap">
+            {Object.entries(OUTCOME_STYLES).map(([label, cls]) => (
+              <span key={label} className={`px-1.5 py-0.5 rounded font-medium ${cls}`}>{label}</span>
+            ))}
           </div>
           <div className="border border-[var(--border-default)] rounded-lg overflow-hidden flex-1 max-h-80 overflow-y-auto">
             {filteredDeals.length === 0 ? <div className="p-8 text-center text-[var(--text-tertiary)]">No companies match your filters</div> : filteredDeals.map(deal => <DealRow key={deal.id} deal={deal} onClick={() => setSelectedDeal(deal)} onToggleInScope={onToggleInScope} updatingFields={updatingFields} />)}
@@ -913,22 +914,12 @@ function DealRow({ deal, onClick, onToggleInScope, updatingFields }) {
   const hasEntry = !!deal.coverageEntryId;
   const isUpdatingS = updatingFields?.has(`${deal.id}:in_scope`);
 
-  // Build seen tooltip showing which signals detected this deal
-  const seenSignals = [];
-  if (deal.hasEmailInteraction) seenSignals.push('Email');
-  if (deal.hasCalendarInteraction) seenSignals.push('Meeting');
-  if (deal.receivedDate) seenSignals.push('Received');
-  const seenTooltip = deal.seen
-    ? `Seen (${seenSignals.length > 0 ? seenSignals.join(', ') : 'Status signal'})`
-    : 'Not seen';
-
   return (
     <div className="p-3 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] transition-colors">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Seen indicator (auto-detected) + In Scope checkbox (manual) */}
-          <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${deal.seen ? 'bg-emerald-500' : 'bg-[var(--border-subtle)]'}`} title={seenTooltip} />
+          {/* In Scope checkbox (manual) */}
+          <div className="flex items-center shrink-0" onClick={e => e.stopPropagation()}>
             <span className="relative" title="In Scope (fits our thesis)">
               <input type="checkbox" checked={deal.coverageInScope || false}
                 onChange={() => hasEntry && onToggleInScope?.(deal.id, !deal.coverageInScope)}
@@ -944,7 +935,7 @@ function DealRow({ deal, onClick, onToggleInScope, updatingFields }) {
         <span className={`text-[11px] px-2 py-0.5 rounded font-medium shrink-0 ${outcomeStyle}`}>{deal.outcome}</span>
       </div>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[11px] pl-[52px]">
+        <div className="flex items-center gap-2 text-[11px] pl-[28px]">
           {deal.amount > 0 && <span className="text-[var(--text-tertiary)]">€{deal.amount}M</span>}
           <span className="text-[var(--text-quaternary)]">{formatMonth(deal.announcedDate) || deal.date}</span>
         </div>
@@ -1041,7 +1032,7 @@ function DealModal({ deal, onClose }) {
           {deal.marketScore !== undefined && <InfoCard label="Market Score" value={deal.marketScore + '/10'} highlight={deal.marketScore <= 2} />}
         </div>
         <div className="flex items-center gap-3 mb-4">
-          <span className={`px-2.5 py-1 rounded text-[12px] font-medium ${deal.seen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{deal.seen ? 'Seen' : 'Missed'}</span>
+          <span className={`px-2.5 py-1 rounded text-[12px] font-medium ${OUTCOME_STYLES[deal.outcome] || 'bg-[var(--bg-tertiary)] text-[var(--text-quaternary)]'}`}>{deal.outcome}</span>
           {deal.receivedDate && <span className="text-[12px] text-[var(--text-tertiary)]">Received {formatMonth(deal.receivedDate)}</span>}
         </div>
         {deal.industry?.length > 0 && (
